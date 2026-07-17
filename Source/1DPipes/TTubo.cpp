@@ -582,7 +582,7 @@ void TTubo::LeeDatosGeneralesTubo(const char *FileWAM, fpos_t &filepos) {
 			}
 		}
 
-		if(fracciontotal > 1 + 1.e-10 && fracciontotal < 1 - 1e-10) {
+		if(fracciontotal > 1 + 1.e-10 || fracciontotal < 1 - 1e-10) {
 			std::cout << "ERROR: Total mass fraction must be equal to 1. Check input data for pipe  " << FNumeroTubo << std::endl;
 			throw Exception(" ");
 		}
@@ -4770,6 +4770,13 @@ void TTubo::CalculaB() {
 
 			FTVD.Bvector[2][i] = 0.;
 
+			// Species transport equations (k >= 3) are passively advected and have
+			// no area/friction/heat source. Their source vector was never set here,
+			// leaving uninitialized garbage that the TVD update injects into the
+			// species mass every step. Zero it explicitly.
+			for(int k = 3; k < FNumEcuaciones; k++)
+				FTVD.Bvector[k][i] = 0.;
+
 			if(FArea[i] != FArea[i + 1] || FCoefAjusFric != 0 || FCoefAjusTC != 0) {
 
 				Rm = sqrtRhoA[i + 1] / sqrtRhoA[i + 1];
@@ -4854,6 +4861,11 @@ void TTubo::CalculaBmen() {
 			FTVD.Bmen[1][i] = 0.;
 
 			FTVD.Bmen[2][i] = 0.;
+
+			// Species transport equations (k >= 3): no source. Zero to avoid
+			// injecting uninitialized memory into the species mass (see CalculaB).
+			for(int k = 3; k < FNumEcuaciones; k++)
+				FTVD.Bmen[k][i] = 0.;
 
 			if(FArea[i] != FArea12[i - 1] || FCoefAjusFric != 0 || FCoefAjusTC != 0) {
 
@@ -4942,6 +4954,11 @@ void TTubo::CalculaBmas() {
 			FTVD.Bmas[1][i] = 0.;
 
 			FTVD.Bmas[2][i] = 0.;
+
+			// Species transport equations (k >= 3): no source. Zero to avoid
+			// injecting uninitialized memory into the species mass (see CalculaB).
+			for(int k = 3; k < FNumEcuaciones; k++)
+				FTVD.Bmas[k][i] = 0.;
 
 			if(FArea[i] != FArea12[i] || FCoefAjusFric != 0 || FCoefAjusTC != 0) {
 

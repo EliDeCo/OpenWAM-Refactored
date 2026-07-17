@@ -239,11 +239,19 @@ class TCilindro {
 	// Variable de control para el calculo del cilindro.
 	// bool FCalculadoPaso;
 
-	// Modelo de Cortocircuito
+	// Modelo de Cortocircuito (angulos alpha: solo 4T, ver TCilindro::AsignacionCC)
 	double FAlphaEscape;
 	double FAlphaAdmision;
-	double FMasaCortocircuito;
+	double FMasaCortocircuito; //!< En 2T: carga fresca perdida por el escape.
 	double FGastoCortocircuito;
+
+	// Modelo de barrido secuencial PD -> PM (solo 2T, ver TCilindro2T::ActualizaPropiedades)
+	double FFraccionDesplazamiento;    //!< Fraccion de la carga desplazada antes de pasar a mezcla perfecta.
+	double FMasaInicioBarrido;         //!< FMasa congelada al entrar en la ventana de barrido.
+	dVector FComposicionInicioBarrido; //!< FFraccionMasicaEspecie congelada al entrar en la ventana.
+	double FMasaEntregadaBarrido;      //!< Carga fresca acumulada (solo entrante) desde el inicio del barrido.
+	bool FBarridoIniciado;             //!< El snapshot ya se ha hecho en esta ventana.
+	bool FFaseMezclaPerfecta;          //!< Fase de mezcla perfecta enganchada (monotona por ciclo).
 
 	// Variables del transporte de especies quimicas.
 	double FMfquem;
@@ -258,6 +266,12 @@ class TCilindro {
 
 	// double GetFraccionMasicaEspecie(int i);
 	double GetAireFresco();
+
+	/*! Fraccion masica de aire fresco de una composicion cualquiera.
+	 A diferencia de GetAireFresco(), que lee FComposicionCicloCerrado (solo valido
+	 en ciclo cerrado), esta trabaja sobre un vector de especies arbitrario y por
+	 tanto es utilizable durante el barrido. */
+	double GetFraccionAireFresco(const dVector& Comp);
 
 	double FGamma;
 	double FRMezcla;

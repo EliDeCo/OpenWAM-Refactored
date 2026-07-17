@@ -983,74 +983,87 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 								  FMotor->getTuboRendVol()->GetPresion(FMotor->getNodoMedio())) / pow2(
 								  FMotor->getTuboRendVol()->GetAsonido(FMotor->getNodoMedio()) * __cons::ARef);
 
-		/* ================================= */
-		/* MODELO DE CORTOCIRCUITO */
-		/* ================================= */
+		/* ================================================= */
+		/* MODELO DE BARRIDO SECUENCIAL: DESPLAZAMIENTO      */
+		/* PERFECTO (PD) -> MEZCLA PERFECTA (PM)             */
+		/* ================================================= */
+
+		// Sustituye al modelo de cortocircuito basado en el angulo alpha, que se
+		// deduce de la geometria de valvulas de asiento (4T) y no tiene equivalente
+		// en las lumbreras de un 2T. Los alpha siguen usandose en TCilindro4T.
+		//
+		// Mientras la carga fresca entregada no supera FFraccionDesplazamiento por
+		// la masa presente al abrir la ventana, se supone desplazamiento perfecto:
+		// el gas que sale es la carga original congelada al inicio del barrido. A
+		// partir de ahi se supone mezcla perfecta: el gas que sale es la media del
+		// cilindro. El cambio de fase es unico y monotono por ciclo.
 
 		if(FAnguloActual > FDistribucion.AA && FAnguloActual < FDistribucion.CE) {
-			if(MasaAdmInstante > 0. && MasaEscInstante < 0.) {
-				// Cortocircuito con sentido Admision hacia Escape.    (massflow positivo)
-				MasaCortocircuitoAdm = MasaAdmInstante * FAlphaEscape / __cons::Pi;
-				MasaCortocircuitoEsc = MasaEscInstante * (__cons::Pi_2 - FAlphaEscape) / __cons::Pi;
-				if(fabs(MasaCortocircuitoAdm) < fabs(MasaCortocircuitoEsc)) {
-					FMasaCortocircuito = fabs(MasaCortocircuitoAdm);
-				} else {
-					FMasaCortocircuito = fabs(MasaCortocircuitoEsc);
-				}
-				FGastoCortocircuito = FMasaCortocircuito / FDeltaT;
-				for(int j = 0; j < FMotor->getSpeciesNumber() - 2; j++) {
-					for(int i = 0; i < FNumeroUnionesAdm; i++) {
-						if(dynamic_cast<TCCCilindro*>(FCCValvulaAdm[i])->getSentidoFlujo() == nmEntrante) {
-							FraccionCC += FCCValvulaAdm[i]->GetFraccionMasicaEspecie(j);
-							NumeroUnionesEntrante++;
-						}
-					}
-					FraccionCC = FraccionCC / NumeroUnionesEntrante;
-					// MasaEscInstante tiene signo - cuando el flujo sale por el escape.
-					FComposicionSaliente[j] = FFraccionMasicaEspecie[j] * (MasaEscInstante + FMasaCortocircuito) / MasaEscInstante -
-											  FraccionCC * FMasaCortocircuito / MasaEscInstante;
-					FraccionCC = 0.;
-					NumeroUnionesEntrante = 0;
-				}
-				if(FHayEGR)
-					FComposicionSaliente[FMotor->getSpeciesNumber() - 1] = FFraccionMasicaEspecie[FMotor->getSpeciesNumber() - 1];
-			} else if(MasaAdmInstante < 0. && MasaEscInstante > 0.) {
-				// Cortocircuito con sentido Escape hacia Admision.   (massflow negativo)
-				MasaCortocircuitoAdm = MasaAdmInstante * (__cons::Pi_2 - FAlphaAdmision) / __cons::Pi;
-				MasaCortocircuitoEsc = MasaEscInstante * FAlphaAdmision / __cons::Pi;
-				if(fabs(MasaCortocircuitoAdm) < fabs(MasaCortocircuitoEsc)) {
-					FMasaCortocircuito = -fabs(MasaCortocircuitoAdm);
-				} else {
-					FMasaCortocircuito = -fabs(MasaCortocircuitoEsc);
-				}
-				FGastoCortocircuito = FMasaCortocircuito / FDeltaT;
-				for(int j = 0; j < FMotor->getSpeciesNumber() - 2; j++) {
-					for(int i = 0; i < FNumeroUnionesEsc; i++) {
-						if(dynamic_cast<TCCCilindro*>(FCCValvulaEsc[i])->getSentidoFlujo() == nmEntrante) {
-							FraccionCC += FCCValvulaEsc[i]->GetFraccionMasicaEspecie(j);
-							NumeroUnionesEntrante++;
-						}
-					}
-					FraccionCC = FraccionCC / NumeroUnionesEntrante;
-					// La masa por la valvula de admision sera negativa, por ser saliente del cilindro.
-					// La masa de cortocircuito de escape a admision es negativa.
-					FComposicionSaliente[j] = FFraccionMasicaEspecie[j] * (MasaAdmInstante - FMasaCortocircuito) / MasaAdmInstante +
-											  FraccionCC * FMasaCortocircuito / MasaAdmInstante;
-					FraccionCC = 0.;
-					NumeroUnionesEntrante = 0;
-				}
-				if(FHayEGR)
-					FComposicionSaliente[FMotor->getSpeciesNumber() - 1] = FFraccionMasicaEspecie[FMotor->getSpeciesNumber() - 1];
+
+			// Congelamos el estado al entrar en la ventana. Nivel + flag en vez de
+			// deteccion de flanco: no se puede perder aunque FDeltaAngulo se salte AA.
+			if(!FBarridoIniciado) {
+				FBarridoIniciado = true;
+				FFaseMezclaPerfecta = false;
+				FMasaInicioBarrido = FMasa;
+				FComposicionInicioBarrido = FFraccionMasicaEspecie; // todas las especies
+				FMasaEntregadaBarrido = 0.;
+			}
+
+			// Cortocircuito = carga fresca que se va por el escape. Se evalua con la
+			// composicion saliente que ha gobernado ESTE paso, antes de sobreescribirla.
+			if(MasaEscInstante < 0.) {
+				FMasaCortocircuito = -MasaEscInstante * GetFraccionAireFresco(FComposicionSaliente);
+				if(FMasaCortocircuito < 0.)
+					FMasaCortocircuito = 0.;
+				if(FMasaCortocircuito > -MasaEscInstante)
+					FMasaCortocircuito = -MasaEscInstante;
 			} else {
-				// No hay cortocircuito, pues en este instante entra o sale massflow por todas las valvulas.
 				FMasaCortocircuito = 0.;
-				FGastoCortocircuito = 0.;
-				for(int j = 0; j < FMotor->getSpeciesNumber() - FIntEGR; j++) {
-					FComposicionSaliente[j] = FFraccionMasicaEspecie[j];
+			}
+			FGastoCortocircuito = FDeltaT > 0. ? FMasaCortocircuito / FDeltaT : 0.;
+
+			// Solo carga entrante: si se acumulase el neto, un reflujo por la admision
+			// podria hacer retroceder la fase y encadenar cambios PD<->PM.
+			if(MasaAdmInstante > 0.)
+				FMasaEntregadaBarrido += MasaAdmInstante;
+
+			// Si FMasaInicioBarrido fuese 0 el test se cumple de inmediato y caemos en
+			// mezcla perfecta, que es el comportamiento base seguro.
+			if(FMasaEntregadaBarrido >= FFraccionDesplazamiento * FMasaInicioBarrido)
+				FFaseMezclaPerfecta = true;
+
+			// El desplazamiento perfecto extrae especies a la composicion congelada, no
+			// a la actual, asi que podria vaciar una especie por debajo de cero y
+			// desestabilizar el calculo. Si no cabe, enganchamos mezcla perfecta, que
+			// nunca puede sobreextraer porque extrae a la fraccion presente.
+			if(!FFaseMezclaPerfecta && MasaEscInstante < 0.) {
+				for(int j = 0; j < FMotor->getSpeciesNumber() - 2; j++) {
+					if(FComposicionInicioBarrido[j] * (-MasaEscInstante) > 0.999 * FMasaEspecie[j]) {
+						FFaseMezclaPerfecta = true;
+						break;
+					}
 				}
 			}
+
+			double FraccionAcum = 0.;
+			for(int j = 0; j < FMotor->getSpeciesNumber() - 2; j++) {
+				FComposicionSaliente[j] = FFaseMezclaPerfecta ? FFraccionMasicaEspecie[j] : FComposicionInicioBarrido[j];
+				FraccionAcum += FComposicionSaliente[j];
+			}
+			// La CC recalcula esta especie como 1-suma (TCCCilindro), pero la escribimos
+			// para que GetFraccionAireFresco vea un vector coherente en el proximo paso.
+			FComposicionSaliente[FMotor->getSpeciesNumber() - 2] = 1. - FraccionAcum;
+			if(FHayEGR)
+				FComposicionSaliente[FMotor->getSpeciesNumber() - 1] = FFaseMezclaPerfecta ?
+						FFraccionMasicaEspecie[FMotor->getSpeciesNumber() - 1] :
+						FComposicionInicioBarrido[FMotor->getSpeciesNumber() - 1];
+
 		} else {
-			// No hay cortocircuito, pues alguna de las valvulas no esta abierta.
+			// Fuera de la ventana de barrido: no hay cortocircuito y el gas que sale
+			// es simplemente el del cilindro.
+			FBarridoIniciado = false;
+			FFaseMezclaPerfecta = false;
 			FMasaCortocircuito = 0.;
 			FGastoCortocircuito = 0.;
 			for(int j = 0; j < FMotor->getSpeciesNumber() - FIntEGR; j++) {

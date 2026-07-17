@@ -556,6 +556,15 @@ void TCilindro::AsignacionCC(TCondicionContorno **BC, int numCC) {
 								 (FCCValvulaEsc[0])->getValvula())->getDiametro() / 2.) / FMotor->getGeometria().DistanciaValvulas);
 			FAlphaAdmision = asin((dynamic_cast<TValvula4T*>(dynamic_cast<TCCCilindro*>
 								   (FCCValvulaAdm[0])->getValvula())->getDiametro() / 2.) / FMotor->getGeometria().DistanciaValvulas);
+		} else {
+			// The alpha angle above is defined from 4-stroke poppet-valve geometry
+			// (valve diameter / distance between valves) and has no 2-stroke port
+			// equivalent, so it is not computed for nm2T. But TCilindro2T's
+			// short-circuit model reads FAlphaEscape/FAlphaAdmision unconditionally,
+			// which meant 2-stroke cases used uninitialized memory. Zero disables the
+			// alpha-based short-circuit term rather than corrupting it.
+			FAlphaEscape = 0.;
+			FAlphaAdmision = 0.;
 		}
 
 		if(FResInstantCilindro.MomentoAngularEsc) {
@@ -2023,11 +2032,20 @@ void TCilindro::IniciaVariables() {
 		FMasaEspecie.resize(FMotor->getSpeciesNumber() - FIntEGR, 0.);
 		FMasaEspecieCicloCerrado.resize(3, 0.);
 		FComposicionCicloCerrado.resize(3, 0.);
+		FComposicionInicioBarrido.resize(FMotor->getSpeciesNumber() - FIntEGR, 0.);
 		for(int i = 0; i < FMotor->getSpeciesNumber() - FIntEGR; i++) {
 			FFraccionMasicaEspecie[i] = FMotor->GetComposicionInicial(i);
 			FComposicionSaliente[i] = FMotor->GetComposicionInicial(i);
 			FFraccionComienzoCicloCerrado[i] = FMotor->GetComposicionInicial(i);
+			FComposicionInicioBarrido[i] = FMotor->GetComposicionInicial(i);
 		}
+
+		// Modelo de barrido secuencial PD -> PM (solo lo usa TCilindro2T).
+		FFraccionDesplazamiento = __cons::FraccionBarridoPD;
+		FMasaInicioBarrido = 0.;
+		FMasaEntregadaBarrido = 0.;
+		FBarridoIniciado = false;
+		FFaseMezclaPerfecta = false;
 		if(FMotor->getSpeciesModel() == nmCalculoCompleto) {
 			if(FMotor->getSpeciesNumber() == 9) {
 				FComposicionCicloCerrado[1] = 0.;
@@ -2100,6 +2118,16 @@ void TCilindro::IniciaVariables() {
 									  125); //Temperatura del combustible en K +125, que es el incremento de la temperatura de combustible hasta la tobera del inyector
 
 		}
+
+		// The open-cycle energy balance in ActualizaPropiedades reads FGamma1 and
+		// FecgInt, but both are only ever assigned inside the closed-cycle
+		// combustion block. A cylinder that starts in the open cycle (2-stroke
+		// scavenging) would read them uninitialized, driving the energy balance to
+		// NaN (garbage FecgInt makes exp() underflow -> T = 0 K -> NaN cascade).
+		// Initialize them here. FecgInt = 0 matches the closed-cycle code, which
+		// unconditionally zeroes it (gaseous-fuel evaporation term disabled).
+		FGamma1 = __Gamma::G1(FGamma);
+		FecgInt = 0.;
 
 		FPresionRCA = FMotor->getPresionInicial();
 
@@ -3132,6 +3160,41 @@ double TCilindro::GetAireFresco() {
 
 	} catch(exception & N) {
 		std::cout << "ERROR: TCilindro::GetAireFresco en la condicion de contorno: " << FNumeroCilindro << std::endl;
+		std::cout << "Tipo de error: " << N.what() << std::endl;
+		throw Exception(N.what());
+	}
+}
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+double TCilindro::GetFraccionAireFresco(const dVector& Comp) {
+	try {
+		double ret_val = 0.;
+
+		// El indice del aire fresco depende del modelo de especies. Este mapeo es
+		// el mismo que se usa al cerrar el ciclo (ver TCilindro2T::ActualizaPropiedades).
+		if(FMotor->getSpeciesModel() == nmCalculoCompleto) {
+			// El aire fresco no es una especie: se deduce del O2 respecto al ambiente.
+			double O2Atmosfera = FMotor->GetComposicionAtmosfera(0);
+			if(O2Atmosfera > 0.)
+				ret_val = Comp[0] / O2Atmosfera;
+		} else if(FMotor->getSpeciesModel() == nmCalculoSimple) {
+			if(FMotor->getSpeciesNumber() == 3) {
+				ret_val = Comp[1];
+			} else if(FMotor->getSpeciesNumber() == 4) {
+				ret_val = Comp[2];
+			}
+		}
+
+		if(ret_val < 0.)
+			ret_val = 0.;
+		if(ret_val > 1.)
+			ret_val = 1.;
+
+		return ret_val;
+
+	} catch(exception & N) {
+		std::cout << "ERROR: TCilindro::GetFraccionAireFresco en el cilindro: " << FNumeroCilindro << std::endl;
 		std::cout << "Tipo de error: " << N.what() << std::endl;
 		throw Exception(N.what());
 	}

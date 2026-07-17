@@ -112,6 +112,10 @@ namespace __cons {
 	const double ARef2 = ARef * ARef;
 	const double TRef = 292.99271;
 	const double PRef = 1.0;
+	/// Fraccion de la carga atrapada desplazada (barrido 2T: desplazamiento
+	/// perfecto hasta esta fraccion, mezcla perfecta despues). 0 = mezcla
+	/// perfecta pura, 1 = desplazamiento perfecto puro.
+	const double FraccionBarridoPD = 0.5;
 }
 ;
 
