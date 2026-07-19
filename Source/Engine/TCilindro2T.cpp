@@ -317,6 +317,24 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 				}
 				if(FHayEGR)
 					FAcumMasaEGR += FCCValvulaAdm[i]->GetFraccionMasicaEspecie(FMotor->getSpeciesNumber() - 1) * FMasaValvAdm;
+
+				// --- Benson-Bradham: fresh-charge short-circuit ---
+				// A fraction FShortCircuitFraction of the fresh air DELIVERED by this port
+				// goes straight out the exhaust and is NOT trapped. It is deducted from the
+				// cylinder mass, but NOT from MasaAdmInstante or FAcumMasaPorAdm: the charge
+				// really was delivered by the port, so lambdaS (delivery ratio) is unchanged
+				// while the trapping and scavenging efficiencies drop, which is exactly the
+				// Bradham semantics. FShortCircuitFraction = 0 => pure Benson model.
+				if(FShortCircuitFraction > 0. && FMasaValvAdm > 0.) {
+					int iAir = FMotor->getSpeciesNumber() - 2;   // fresh-air filler species
+					double dSC = FShortCircuitFraction * FCCValvulaAdm[i]->GetFraccionMasicaEspecie(iAir) * FMasaValvAdm;
+					if(dSC > 0.999 * FMasaEspecie[iAir])         // never drain the species below zero
+						dSC = 0.999 * FMasaEspecie[iAir];
+					if(dSC > 0.) {
+						FMasaEspecie[iAir] -= dSC;
+						FMasa -= dSC;
+					}
+				}
 			}
 			// GASTO POR ESCAPE
 			for(int i = 0; i < FNumeroUnionesEsc; i++) {
@@ -984,34 +1002,34 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 								  FMotor->getTuboRendVol()->GetAsonido(FMotor->getNodoMedio()) * __cons::ARef);
 
 		/* ================================================= */
-		/* MODELO DE BARRIDO SECUENCIAL: DESPLAZAMIENTO      */
-		/* PERFECTO (PD) -> MEZCLA PERFECTA (PM)             */
+		/* SEQUENTIAL SCAVENGING MODEL: PERFECT              */
+		/* DISPLACEMENT (PD) -> PERFECT MIXING (PM)          */
 		/* ================================================= */
 
-		// Sustituye al modelo de cortocircuito basado en el angulo alpha, que se
-		// deduce de la geometria de valvulas de asiento (4T) y no tiene equivalente
-		// en las lumbreras de un 2T. Los alpha siguen usandose en TCilindro4T.
+		// Replaces the short-circuit model based on the alpha angle, which is derived
+		// from poppet-valve geometry (4-stroke) and has no equivalent in the ports of
+		// a 2-stroke. The alpha angles are still used by TCilindro4T.
 		//
-		// Mientras la carga fresca entregada no supera FFraccionDesplazamiento por
-		// la masa presente al abrir la ventana, se supone desplazamiento perfecto:
-		// el gas que sale es la carga original congelada al inicio del barrido. A
-		// partir de ahi se supone mezcla perfecta: el gas que sale es la media del
-		// cilindro. El cambio de fase es unico y monotono por ciclo.
+		// While the delivered fresh charge does not exceed FFraccionDesplazamiento
+		// times the mass present when the window opened, perfect displacement is
+		// assumed: the gas leaving is the original charge frozen at the start of
+		// scavenging. From then on perfect mixing is assumed: the gas leaving is the
+		// cylinder average. The phase change happens once and is monotonic per cycle.
 
 		if(FAnguloActual > FDistribucion.AA && FAnguloActual < FDistribucion.CE) {
 
-			// Congelamos el estado al entrar en la ventana. Nivel + flag en vez de
-			// deteccion de flanco: no se puede perder aunque FDeltaAngulo se salte AA.
+			// Freeze the state on entering the window. Level + flag instead of edge
+			// detection: it cannot be missed even if FDeltaAngulo steps over AA.
 			if(!FBarridoIniciado) {
 				FBarridoIniciado = true;
 				FFaseMezclaPerfecta = false;
 				FMasaInicioBarrido = FMasa;
-				FComposicionInicioBarrido = FFraccionMasicaEspecie; // todas las especies
+				FComposicionInicioBarrido = FFraccionMasicaEspecie; // all species
 				FMasaEntregadaBarrido = 0.;
 			}
 
-			// Cortocircuito = carga fresca que se va por el escape. Se evalua con la
-			// composicion saliente que ha gobernado ESTE paso, antes de sobreescribirla.
+			// Short-circuit = fresh charge leaving through the exhaust. Evaluated with
+			// the outgoing composition that governed THIS step, before overwriting it.
 			if(MasaEscInstante < 0.) {
 				FMasaCortocircuito = -MasaEscInstante * GetFraccionAireFresco(FComposicionSaliente);
 				if(FMasaCortocircuito < 0.)
@@ -1023,20 +1041,20 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 			}
 			FGastoCortocircuito = FDeltaT > 0. ? FMasaCortocircuito / FDeltaT : 0.;
 
-			// Solo carga entrante: si se acumulase el neto, un reflujo por la admision
-			// podria hacer retroceder la fase y encadenar cambios PD<->PM.
+			// Inflow only: accumulating the net value would let a backflow through the
+			// intake push the phase backwards and chain PD<->PM switches.
 			if(MasaAdmInstante > 0.)
 				FMasaEntregadaBarrido += MasaAdmInstante;
 
-			// Si FMasaInicioBarrido fuese 0 el test se cumple de inmediato y caemos en
-			// mezcla perfecta, que es el comportamiento base seguro.
+			// If FMasaInicioBarrido were 0 the test passes immediately and we fall back
+			// to perfect mixing, which is the safe baseline behaviour.
 			if(FMasaEntregadaBarrido >= FFraccionDesplazamiento * FMasaInicioBarrido)
 				FFaseMezclaPerfecta = true;
 
-			// El desplazamiento perfecto extrae especies a la composicion congelada, no
-			// a la actual, asi que podria vaciar una especie por debajo de cero y
-			// desestabilizar el calculo. Si no cabe, enganchamos mezcla perfecta, que
-			// nunca puede sobreextraer porque extrae a la fraccion presente.
+			// Perfect displacement extracts species at the frozen composition rather than
+			// the current one, so it could drain a species below zero and destabilise the
+			// calculation. If it does not fit, latch perfect mixing, which can never
+			// over-extract because it extracts at the fraction actually present.
 			if(!FFaseMezclaPerfecta && MasaEscInstante < 0.) {
 				for(int j = 0; j < FMotor->getSpeciesNumber() - 2; j++) {
 					if(FComposicionInicioBarrido[j] * (-MasaEscInstante) > 0.999 * FMasaEspecie[j]) {
@@ -1051,8 +1069,8 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 				FComposicionSaliente[j] = FFaseMezclaPerfecta ? FFraccionMasicaEspecie[j] : FComposicionInicioBarrido[j];
 				FraccionAcum += FComposicionSaliente[j];
 			}
-			// La CC recalcula esta especie como 1-suma (TCCCilindro), pero la escribimos
-			// para que GetFraccionAireFresco vea un vector coherente en el proximo paso.
+			// The BC recomputes this species as 1-sum (TCCCilindro), but we write it here
+			// so GetFraccionAireFresco sees a consistent vector on the next step.
 			FComposicionSaliente[FMotor->getSpeciesNumber() - 2] = 1. - FraccionAcum;
 			if(FHayEGR)
 				FComposicionSaliente[FMotor->getSpeciesNumber() - 1] = FFaseMezclaPerfecta ?
@@ -1060,8 +1078,8 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 						FComposicionInicioBarrido[FMotor->getSpeciesNumber() - 1];
 
 		} else {
-			// Fuera de la ventana de barrido: no hay cortocircuito y el gas que sale
-			// es simplemente el del cilindro.
+			// Outside the scavenging window: there is no short-circuit and the gas
+			// leaving is simply the cylinder's own composition.
 			FBarridoIniciado = false;
 			FFaseMezclaPerfecta = false;
 			FMasaCortocircuito = 0.;

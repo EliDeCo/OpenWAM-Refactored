@@ -2040,8 +2040,16 @@ void TCilindro::IniciaVariables() {
 			FComposicionInicioBarrido[i] = FMotor->GetComposicionInicial(i);
 		}
 
-		// Modelo de barrido secuencial PD -> PM (solo lo usa TCilindro2T).
-		FFraccionDesplazamiento = __cons::FraccionBarridoPD;
+		// Sequential PD -> PM scavenging model (only used by TCilindro2T).
+		// [CALIBRATION - TEMPORARY] allows sweeping the two scavenging parameters via
+		// the OPENWAM_FBPD / OPENWAM_YSC environment variables without recompiling.
+		// When a variable is not set, the compiled default is used.
+		{
+			const char* _fbpd = getenv("OPENWAM_FBPD");
+			FFraccionDesplazamiento = _fbpd ? atof(_fbpd) : __cons::FraccionBarridoPD;
+			const char* _ysc = getenv("OPENWAM_YSC");
+			FShortCircuitFraction = _ysc ? atof(_ysc) : __cons::ShortCircuitFractionBB;
+		}
 		FMasaInicioBarrido = 0.;
 		FMasaEntregadaBarrido = 0.;
 		FBarridoIniciado = false;
@@ -3171,10 +3179,10 @@ double TCilindro::GetFraccionAireFresco(const dVector& Comp) {
 	try {
 		double ret_val = 0.;
 
-		// El indice del aire fresco depende del modelo de especies. Este mapeo es
-		// el mismo que se usa al cerrar el ciclo (ver TCilindro2T::ActualizaPropiedades).
+		// The fresh-air index depends on the species model. This mapping is the same
+		// one used when closing the cycle (see TCilindro2T::ActualizaPropiedades).
 		if(FMotor->getSpeciesModel() == nmCalculoCompleto) {
-			// El aire fresco no es una especie: se deduce del O2 respecto al ambiente.
+			// Fresh air is not a species here: it is inferred from O2 relative to ambient.
 			double O2Atmosfera = FMotor->GetComposicionAtmosfera(0);
 			if(O2Atmosfera > 0.)
 				ret_val = Comp[0] / O2Atmosfera;

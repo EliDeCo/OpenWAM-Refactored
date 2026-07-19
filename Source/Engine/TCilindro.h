@@ -239,19 +239,20 @@ class TCilindro {
 	// Variable de control para el calculo del cilindro.
 	// bool FCalculadoPaso;
 
-	// Modelo de Cortocircuito (angulos alpha: solo 4T, ver TCilindro::AsignacionCC)
+	// Short-circuit model (alpha angles: 4-stroke only, see TCilindro::AsignacionCC)
 	double FAlphaEscape;
 	double FAlphaAdmision;
-	double FMasaCortocircuito; //!< En 2T: carga fresca perdida por el escape.
+	double FMasaCortocircuito; //!< In 2-stroke: fresh charge lost through the exhaust.
 	double FGastoCortocircuito;
 
-	// Modelo de barrido secuencial PD -> PM (solo 2T, ver TCilindro2T::ActualizaPropiedades)
-	double FFraccionDesplazamiento;    //!< Fraccion de la carga desplazada antes de pasar a mezcla perfecta.
-	double FMasaInicioBarrido;         //!< FMasa congelada al entrar en la ventana de barrido.
-	dVector FComposicionInicioBarrido; //!< FFraccionMasicaEspecie congelada al entrar en la ventana.
-	double FMasaEntregadaBarrido;      //!< Carga fresca acumulada (solo entrante) desde el inicio del barrido.
-	bool FBarridoIniciado;             //!< El snapshot ya se ha hecho en esta ventana.
-	bool FFaseMezclaPerfecta;          //!< Fase de mezcla perfecta enganchada (monotona por ciclo).
+	// Sequential PD -> PM scavenging model (2-stroke only, see TCilindro2T::ActualizaPropiedades)
+	double FFraccionDesplazamiento;    //!< Fraction of the charge displaced before switching to perfect mixing.
+	double FShortCircuitFraction;      //!< Benson-Bradham: fraction of the delivered fresh charge short-circuited to the exhaust.
+	double FMasaInicioBarrido;         //!< FMasa frozen on entering the scavenging window.
+	dVector FComposicionInicioBarrido; //!< FFraccionMasicaEspecie frozen on entering the window.
+	double FMasaEntregadaBarrido;      //!< Fresh charge accumulated (inflow only) since scavenging started.
+	bool FBarridoIniciado;             //!< The snapshot has already been taken in this window.
+	bool FFaseMezclaPerfecta;          //!< Perfect-mixing phase latched (monotonic within a cycle).
 
 	// Variables del transporte de especies quimicas.
 	double FMfquem;
@@ -267,10 +268,10 @@ class TCilindro {
 	// double GetFraccionMasicaEspecie(int i);
 	double GetAireFresco();
 
-	/*! Fraccion masica de aire fresco de una composicion cualquiera.
-	 A diferencia de GetAireFresco(), que lee FComposicionCicloCerrado (solo valido
-	 en ciclo cerrado), esta trabaja sobre un vector de especies arbitrario y por
-	 tanto es utilizable durante el barrido. */
+	/*! Fresh-air mass fraction of an arbitrary composition.
+	 Unlike GetAireFresco(), which reads FComposicionCicloCerrado (only valid during
+	 the closed cycle), this works on an arbitrary species vector and is therefore
+	 usable during scavenging. */
 	double GetFraccionAireFresco(const dVector& Comp);
 
 	double FGamma;

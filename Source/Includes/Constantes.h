@@ -112,10 +112,15 @@ namespace __cons {
 	const double ARef2 = ARef * ARef;
 	const double TRef = 292.99271;
 	const double PRef = 1.0;
-	/// Fraccion de la carga atrapada desplazada (barrido 2T: desplazamiento
-	/// perfecto hasta esta fraccion, mezcla perfecta despues). 0 = mezcla
-	/// perfecta pura, 1 = desplazamiento perfecto puro.
+	/// Fraction of the trapped charge that is displaced (2-stroke scavenging:
+	/// perfect displacement up to this fraction, perfect mixing afterwards).
+	/// 0 = pure perfect mixing, 1 = pure perfect displacement.
 	const double FraccionBarridoPD = 0.5;
+	/// Benson-Bradham model: fraction of the DELIVERED fresh charge that is
+	/// short-circuited (enters through the scavenge ports and leaves straight out
+	/// the exhaust without being trapped). 0 = no short-circuit, i.e. the pure
+	/// Benson displacement-only model.
+	const double ShortCircuitFractionBB = 0.0;
 }
 ;
 
