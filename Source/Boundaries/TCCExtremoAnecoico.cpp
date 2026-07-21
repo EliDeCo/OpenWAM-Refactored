@@ -102,7 +102,16 @@ void TCCExtremoAnecoico::CalculaCondicionContorno(double Time) {
 	try {
 		double FraccionMasicaAcum = 0.;
 
-		*FCD = FTuboExtremo[0].Entropia;
+		/* A non-reflecting end must impose the characteristic of the UNDISTURBED far
+		 field, so that nothing travels back into the pipe. That state is the pipe's
+		 own initial pressure, not the non-dimensionalisation datum __cons::PRef.
+		 Using the entropy level alone (the previous code) is equivalent to holding
+		 A = AA, i.e. pinning the end to PRef = 1 bar: a pipe initialised at any other
+		 pressure was drained towards 1 bar by a spurious step wave launched at t = 0.
+		 Reduces exactly to the previous expression when Pini == PRef. */
+		FGamma = FTuboExtremo[0].Pipe->GetGamma(FNodoFin);
+		double Pini = FTuboExtremo[0].Pipe->getPini();
+		*FCD = FTuboExtremo[0].Entropia * pow(Pini / __cons::PRef, __Gamma::G5(FGamma));
 
 //Transporte de especies quimicas.
 		for(int j = 0; j < FNumeroEspecies - 2; j++) {

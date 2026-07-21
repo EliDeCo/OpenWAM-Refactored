@@ -9,6 +9,14 @@ TOutputResults::TOutputResults() {
 	FAvgOutput.str("");
 	AvgEngine = NULL;
 	FInsOutput.str("");
+
+	/* Default stream precision is 6 significant digits. For an absolute pressure that
+	 is fine for the integer part but leaves only ~1e-5 bar (0.01 mbar) of resolution
+	 on the perturbation riding on it, which is 0.5% quantisation on a 2 mbar acoustic
+	 pulse - the same order as the effects these tests measure. 12 digits puts
+	 quantisation far below every other error source. */
+	FInsOutput.precision(12);
+	FAvgOutput.precision(12);
 	FPlotThisCycle = true;
 	FFirstTime = true;
 	InsHeaderCreated = false;

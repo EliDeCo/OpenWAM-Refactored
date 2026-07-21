@@ -163,8 +163,23 @@ void TCCPulso::CalculaCondicionContorno(double Time) {
 		Pressure = FPulso->InterpolaPresion();
 		Entropia = FPulso->InterpolaEntropia();
 
-		*FCD = (2.0 * pow((1 + Pressure) / FPref, __Gamma::G5(FGamma)) - 1.0) * Entropia;
-		*FCC = Entropia;
+		/* The tabulated pressure is RELATIVE to the undisturbed state, which is the
+		 attached pipe's initial pressure - not the non-dimensionalisation datum
+		 __cons::PRef. Build the simple wave that takes the gas from Pini to
+		 Pini + Pressure:
+		     A0 = AA * (Pini / PRef)^G5              undisturbed sound speed
+		     Ab = AA * ((Pini + Pressure) / PRef)^G5 sound speed behind the wave
+		     beta = A0,  lambda = 2*Ab - A0          (so G3*U = Ab - A0)
+		 With a zero table entry this leaves the end exactly at Pini with U = 0, so no
+		 step wave is launched at t = 0. Reduces exactly to the previous expression
+		 when Pini == PRef, which is what the old hard-coded FPref = 1 assumed. */
+		double G5 = __Gamma::G5(FGamma);
+		double Pini = FTuboExtremo[0].Pipe->getPini();
+		double A0 = Entropia * pow(Pini / __cons::PRef, G5);
+		double Ab = Entropia * pow((Pini + Pressure) / __cons::PRef, G5);
+
+		*FCD = 2.0 * Ab - A0;
+		*FCC = A0;
 		FTuboExtremo[0].Entropia = Entropia;
 
 // Transporte de Especies Quimicas

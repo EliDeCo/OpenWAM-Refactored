@@ -600,6 +600,15 @@ class TTubo {
 		return FNin;
 	}
 	;
+
+	/*! Initial (undisturbed) gas pressure in this pipe. [bar]
+	 Boundary conditions that must reproduce the undisturbed state - the anechoic
+	 end and the incident-pressure-wave inlet - use this instead of assuming the
+	 non-dimensionalisation datum __cons::PRef. */
+	double getPini() const {
+		return FPini;
+	}
+	;
 	int getNumeroConductos() {
 		return FNumeroConductos;
 	}

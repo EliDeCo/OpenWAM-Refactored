@@ -86,6 +86,13 @@ TTubo::TTubo(int SpeciesNumber, int j, double SimulationDuration, TBloqueMotor *
 	FCicloTubo = 0;
 	FNumeroTubo = j + 1;
 
+	/* Plain duct by default. LeeDatosGeneralesTubo overwrites this from the file, but
+	 the file's duct-type code is not guaranteed to hit a case of that switch, and an
+	 indeterminate value here is not merely a wrong correlation: the geometry reader
+	 branches on it (LeeDatosGeometricosTubo) and would consume an extra integer that
+	 does not exist, desynchronising the rest of the WAM parse. */
+	FTipoTransCal = nmTuboAdmision;
+
 	FNumeroEspecies = SpeciesNumber;
 	FCalculoEspecies = SpeciesModel;
 	FCalculoGamma = GammaCalculation;
@@ -549,6 +556,12 @@ void TTubo::LeeDatosGeneralesTubo(const char *FileWAM, fpos_t &filepos) {
 		fscanf(fich, "%d %lf %lf ", &TipTC, &FCoefAjusTC, &FCoefAjusFric);
 
 		switch(TipTC) {
+		case 0:
+			/* The UI writes 0 for the duct-type field when no engine is present, since
+			 "intake/exhaust pipe" and "intake/exhaust port" are all engine-relative. A
+			 duct with no engine attached is a plain pipe: treat it as such. */
+			FTipoTransCal = nmTuboAdmision;
+			break;
 		case 1:
 			FTipoTransCal = nmTuboAdmision;
 			break;
@@ -560,6 +573,13 @@ void TTubo::LeeDatosGeneralesTubo(const char *FileWAM, fpos_t &filepos) {
 			break;
 		case 4:
 			FTipoTransCal = nmPipaAdmision;
+			break;
+		default:
+			/* Never leave this indeterminate - the geometry reader branches on it and
+			 would desynchronise the parse of every following block. */
+			FTipoTransCal = nmTuboAdmision;
+			std::cout << "WARNING: Unknown duct type " << TipTC << " in pipe " << FNumeroTubo
+					  << ". Assuming a plain (intake) pipe." << std::endl;
 			break;
 		}
 
@@ -2184,9 +2204,15 @@ void TTubo::Colebrook(double rug, double dia, double& f, double Re) {
 		}
 		f = 0.0625 / temp2;
 	} else if(Re > 1) {
-		f = 32. / Re;
+		/* Hagen-Poiseuille. This function returns the FANNING factor - the turbulent
+		 branch above is 0.0625/log^2 = (0.25/log^2)/4 = Darcy/4, and the momentum
+		 source g = f*v^2*2/D is only dimensionally correct for Fanning. Laminar Darcy
+		 is 64/Re, so Fanning is 16/Re; the previous 32/Re was Darcy/2 and made laminar
+		 friction exactly twice what it should be, independently of the half-cell
+		 double-count fixed in CalculaBmas/CalculaBmen. */
+		f = 16. / Re;
 	} else {
-		f = 32.;
+		f = 16.;
 	}
 }
 
@@ -2576,6 +2602,9 @@ void TTubo::HeaderAverageResults(stringstream& medoutput, stEspecies *DatosEspec
 		TextDist.precision(8);
 
 		for(int i = 0; i < FNumResMedios; i++) {
+			// Reset the buffer (see HeaderInstantaneousResults): without this the station
+			// distances accumulate into the labels when a duct has several result stations.
+			TextDist.str("");
 			TextDist << ResultadosMedios[i].Distancia;
 
 			if(ResultadosMedios[i].TemperaturaGas) {
@@ -2819,6 +2848,10 @@ void TTubo::HeaderInstantaneousResults(stringstream& insoutput, stEspecies *Dato
 		TextDist.precision(8);
 
 		for(int i = 0; i < FNumResInstant; i++) {
+			// Reset the buffer: it is declared outside the loop, so without this the
+			// station distances accumulate into the column labels of every duct that
+			// has more than one result station ("0.25", "0.250.75", "0.250.751.25", ...).
+			TextDist.str("");
 			TextDist << ResultInstantaneos[i].Distancia;
 			if(ResultInstantaneos[i].Pressure) {
 				Label = "\t" + PutLabel(301) + std::to_string(FNumeroTubo) + PutLabel(316) + TextDist.str() + PutLabel(317) + PutLabel(
@@ -4906,7 +4939,17 @@ void TTubo::CalculaBmen() {
 						else
 							g = -f * Vmed * Vmed * 2 / diamemed * FCoefAjusFric;
 
-						FTVD.Bmen[1][i] += FXref * g * rhoAmed;
+						/* Bmen covers the HALF cell from the i-1/2 face to node i, and
+						 TVD_Limitador adds Bmen[i] + Bmas[i] to get the whole cell. The
+						 friction source must therefore be integrated over FXref/2 here,
+						 not FXref, or the pair double-counts it. The area-change term a
+						 few lines up is immune because it is a *difference* of areas,
+						 which splits across the two halves on its own; only the terms
+						 that multiply by a length (friction, heat transfer) are affected.
+						 Measured effect before this fix: effective Darcy friction was
+						 exactly 2.000x the value TTubo::Colebrook returns, at every
+						 Reynolds number, roughness and friction-adjuster setting. */
+						FTVD.Bmen[1][i] += 0.5 * FXref * g * rhoAmed;
 					}
 				}
 
@@ -4921,7 +4964,8 @@ void TTubo::CalculaBmen() {
 
 					q = q * FCoefAjusTC;
 
-					FTVD.Bmen[2][i] = -FXref * q * rhoAmed;
+					/* Half cell - see the friction term above. */
+					FTVD.Bmen[2][i] = -0.5 * FXref * q * rhoAmed;
 
 				}
 
@@ -4999,7 +5043,8 @@ void TTubo::CalculaBmas() {
 						else
 							g = -f * Vmed * Vmed * 2 / diamemed * FCoefAjusFric;
 
-						FTVD.Bmas[1][i] += FXref * g * rhoAmed;
+						/* Half cell (node i to the i+1/2 face) - see CalculaBmen. */
+						FTVD.Bmas[1][i] += 0.5 * FXref * g * rhoAmed;
 					}
 				}
 
@@ -5014,7 +5059,8 @@ void TTubo::CalculaBmas() {
 
 					q = q * FCoefAjusTC;
 
-					FTVD.Bmas[2][i] = -FXref * q * rhoAmed;
+					/* Half cell - see CalculaBmen. */
+					FTVD.Bmas[2][i] = -0.5 * FXref * q * rhoAmed;
 
 				}
 
