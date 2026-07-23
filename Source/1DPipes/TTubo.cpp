@@ -184,6 +184,8 @@ TTubo::TTubo(int SpeciesNumber, int j, double SimulationDuration, TBloqueMotor *
 	FTVD.Bmas = NULL;
 	FTVD.Bvector = NULL;
 	FTVD.Bmen = NULL;
+	FTVD.Cmas = NULL;
+	FTVD.Cmen = NULL;
 	FTVD.Qmatrix = NULL;
 	FTVD.Pmatrix = NULL;
 	FTVD.gflux = NULL;
@@ -457,6 +459,10 @@ TTubo::~TTubo() {
 			delete[] FTVD.Bmas[i];
 		if(FTVD.Bmen != NULL)
 			delete[] FTVD.Bmen[i];
+		if(FTVD.Cmas != NULL)
+			delete[] FTVD.Cmas[i];
+		if(FTVD.Cmen != NULL)
+			delete[] FTVD.Cmen[i];
 		if(FTVD.Bvector != NULL)
 			delete[] FTVD.Bvector[i];
 		if(FTVD.gflux != NULL)
@@ -491,6 +497,10 @@ TTubo::~TTubo() {
 		delete[] FTVD.Bmas;
 	if(FTVD.Bmen != NULL)
 		delete[] FTVD.Bmen;
+	if(FTVD.Cmas != NULL)
+		delete[] FTVD.Cmas;
+	if(FTVD.Cmen != NULL)
+		delete[] FTVD.Cmen;
 	if(FTVD.Bvector != NULL)
 		delete[] FTVD.Bvector;
 	if(FTVD.gflux != NULL)
@@ -4538,18 +4548,25 @@ void TTubo::Calculo_Entropia(double& entropia, double& velocidadp, int ind, doub
 		double hip = Fhi[ind];
 		double rhop = Frho[ind];
 		double Rep = FRe[ind];
+		/* Area at the foot of the characteristic - must be interpolated consistently with
+		 w0/w1/w2 (both U[0] and U[2] carry the area). See the note in Calculo_Caracteristica. */
+		double areap = FArea[ind];
 
 		for(int j = 0; j < FNumeroEspecies - FIntEGR; j++) {
 			FFraccionMasicaCC[indiceCC][j] = FFraccionMasicaEspecie[ind][j];
 		}
 
-		if(dist > 0. || dist < 1.) {
+		/* Was "dist > 0. || dist < 1.", which is true for every real number, so this branch
+		 always ran and would EXTRAPOLATE whenever dist fell outside [0,1]. Matches the guard
+		 in Calculo_Caracteristica now; inside (0,1) the behaviour is unchanged. */
+		if(dist > 0. && dist < 1.) {
 			w0 = Interpola(FU0[0][ind], FU0[0][ind1], 1., dist);
 			w1 = Interpola(FU0[1][ind], FU0[1][ind1], 1., dist);
 			w2 = Interpola(FU0[2][ind], FU0[2][ind1], 1., dist);
 			gammap = Interpola(FGamma[ind], FGamma[ind1], 1., dist);
 			Rmezclap = Interpola(FRMezcla[ind], FRMezcla[ind1], 1., dist);
 			diamep = Interpola(FDiametroTubo[ind], FDiametroTubo[ind1], 1., dist);
+			areap = Interpola(FArea[ind], FArea[ind1], 1., dist);
 			if(FCoefAjusTC != 0 || FCoefAjusFric != 0) {
 				tptubop = Interpola(FTPTubo[0][ind], FTPTubo[0][ind1], 1., dist);
 				hip = Interpola(Fhi[ind], Fhi[ind1], 1., dist);
@@ -4565,9 +4582,9 @@ void TTubo::Calculo_Entropia(double& entropia, double& velocidadp, int ind, doub
 		double gamma3p = __Gamma::G3(gammap);
 		double gamma5p = __Gamma::G5(gammap);
 		velocidadp = w1 / w0;
-		rhop = w0 / __geom::Circle_area(diamep);
+		rhop = w0 / areap;
 		double asonidop = sqrt(gammap * gamma1p * (w2 / w0 - pow2(velocidadp) / 2));
-		double presionp = __units::PaToBar((w2 - pow2(w1) / 2. / w0) * gamma1p / __geom::Circle_area(diamep));
+		double presionp = __units::PaToBar((w2 - pow2(w1) / 2. / w0) * gamma1p / areap);
 		double entropiap = asonidop / pow(presionp, gamma5p);
 		entropia = entropiap;
 
@@ -4672,6 +4689,15 @@ void TTubo::Calculo_Caracteristica(double& caracteristica, double& velocidadp, d
 		double hip = Fhi[ind];
 		double rhop = Frho[ind];
 		double Rep = FRe[ind];
+		/* Area at the foot of the characteristic. It MUST be interpolated the same way the
+		 conserved variables w0/w1/w2 are, because U[0] and U[2] are both proportional to the
+		 area and the area cancels when the primitives are recovered from them. Using
+		 Circle_area(interpolated diameter) instead is inconsistent: for a cone the diameter is
+		 linear in x, so that area is quadratic while the interpolated w2 carries a LINEAR area.
+		 The mismatch (~0.25*(dD/D)^2) put a spurious error into presionp -> entropiap -> the
+		 daen term below, injecting a perturbation into the characteristic at every step even
+		 for a duct at rest, whenever the boundary cells sat in a varying-area region. */
+		double areap = FArea[ind];
 
 		if(dist < 1. && dist > 0) {
 
@@ -4681,6 +4707,7 @@ void TTubo::Calculo_Caracteristica(double& caracteristica, double& velocidadp, d
 			gammap = Interpola(FGamma[ind], FGamma[ind1], 1., dist);
 			Rmezclap = Interpola(FRMezcla[ind], FRMezcla[ind1], 1., dist);
 			diamep = Interpola(FDiametroTubo[ind], FDiametroTubo[ind1], 1., dist);
+			areap = Interpola(FArea[ind], FArea[ind1], 1., dist);
 			if(FCoefAjusTC != 0 || FCoefAjusFric != 0) {
 				tptubop = Interpola(FTPTubo[0][ind], FTPTubo[0][ind1], 1., dist);
 				hip = Interpola(Fhi[ind], Fhi[ind1], 1., dist);
@@ -4716,7 +4743,7 @@ void TTubo::Calculo_Caracteristica(double& caracteristica, double& velocidadp, d
 		/* variacion debida a la variacion entropia */
 		/* ---------------------------------------- */
 
-		double presionp = __units::PaToBar((w2 - pow2(w1) / 2. / w0) * gamma1p / __geom::Circle_area(diamep));
+		double presionp = __units::PaToBar((w2 - pow2(w1) / 2. / w0) * gamma1p / areap);
 		double entropiap = asonidop / pow(presionp, gamma5p);
 		double increentropia = entropia * __cons::ARef - entropiap;
 		double daen = asonidop * increentropia / entropiap;
@@ -4812,7 +4839,10 @@ void TTubo::CalculaB() {
 
 			if(FArea[i] != FArea[i + 1] || FCoefAjusFric != 0 || FCoefAjusTC != 0) {
 
-				Rm = sqrtRhoA[i + 1] / sqrtRhoA[i + 1];
+				// Roe density ratio chi = sqrt(rho_{i+1}*A_{i+1} / (rho_i*A_i)), Corberan & Gascon
+				// 1995 eq. 20 (sqrtRhoA[i] = sqrt(rho_i*A_i)). Was sqrtRhoA[i+1]/sqrtRhoA[i+1] (= 1),
+				// which forced an arithmetic mean in the area/friction source vector Bvector.
+				Rm = sqrtRhoA[i + 1] / sqrtRhoA[i];
 				Rm1 = Rm + 1;
 				gamma = (Rm * FGamma[i + 1] + FGamma[i]) / Rm1;
 				gamma1 = gamma - 1;
@@ -4895,10 +4925,20 @@ void TTubo::CalculaBmen() {
 
 			FTVD.Bmen[2][i] = 0.;
 
+			// Corberan & Gascon (1995) separate the reversible area force B (eq. 3, goes through
+			// the flux + limiter) from the irreversible friction/heat source C (applied as a direct
+			// source + the Dt(R Lambda L)C redistribution of eq. 18, never through the limiter).
+			// Bmen = area only; Cmen = friction + heat.
+			FTVD.Cmen[0][i] = 0.;
+			FTVD.Cmen[1][i] = 0.;
+			FTVD.Cmen[2][i] = 0.;
+
 			// Species transport equations (k >= 3): no source. Zero to avoid
 			// injecting uninitialized memory into the species mass (see CalculaB).
-			for(int k = 3; k < FNumEcuaciones; k++)
+			for(int k = 3; k < FNumEcuaciones; k++) {
 				FTVD.Bmen[k][i] = 0.;
+				FTVD.Cmen[k][i] = 0.;
+			}
 
 			if(FArea[i] != FArea12[i - 1] || FCoefAjusFric != 0 || FCoefAjusTC != 0) {
 
@@ -4939,17 +4979,15 @@ void TTubo::CalculaBmen() {
 						else
 							g = -f * Vmed * Vmed * 2 / diamemed * FCoefAjusFric;
 
-						/* Bmen covers the HALF cell from the i-1/2 face to node i, and
-						 TVD_Limitador adds Bmen[i] + Bmas[i] to get the whole cell. The
-						 friction source must therefore be integrated over FXref/2 here,
-						 not FXref, or the pair double-counts it. The area-change term a
-						 few lines up is immune because it is a *difference* of areas,
-						 which splits across the two halves on its own; only the terms
-						 that multiply by a length (friction, heat transfer) are affected.
-						 Measured effect before this fix: effective Darcy friction was
-						 exactly 2.000x the value TTubo::Colebrook returns, at every
-						 Reynolds number, roughness and friction-adjuster setting. */
-						FTVD.Bmen[1][i] += 0.5 * FXref * g * rhoAmed;
+						/* Cmen covers the HALF cell from the i-1/2 face to node i, and the update
+						 adds Cmen[i] + Cmas[i] to get the whole-cell direct source. The friction
+						 source must therefore be integrated over FXref/2 here, not FXref, or the
+						 pair double-counts it. (The area term above is immune because it is a
+						 *difference* of areas, which splits across the two halves on its own; only
+						 length-weighted terms, friction and heat, are affected.) Measured effect
+						 before this fix: effective Darcy friction was exactly 2.000x the value
+						 TTubo::Colebrook returns, at every Re, roughness and friction-adjuster. */
+						FTVD.Cmen[1][i] += 0.5 * FXref * g * rhoAmed;
 					}
 				}
 
@@ -4965,7 +5003,7 @@ void TTubo::CalculaBmen() {
 					q = q * FCoefAjusTC;
 
 					/* Half cell - see the friction term above. */
-					FTVD.Bmen[2][i] = -0.5 * FXref * q * rhoAmed;
+					FTVD.Cmen[2][i] = -0.5 * FXref * q * rhoAmed;
 
 				}
 
@@ -4999,10 +5037,17 @@ void TTubo::CalculaBmas() {
 
 			FTVD.Bmas[2][i] = 0.;
 
+			// Bmas = area only; Cmas = friction + heat (see CalculaBmen for the B/C split rationale).
+			FTVD.Cmas[0][i] = 0.;
+			FTVD.Cmas[1][i] = 0.;
+			FTVD.Cmas[2][i] = 0.;
+
 			// Species transport equations (k >= 3): no source. Zero to avoid
 			// injecting uninitialized memory into the species mass (see CalculaB).
-			for(int k = 3; k < FNumEcuaciones; k++)
+			for(int k = 3; k < FNumEcuaciones; k++) {
 				FTVD.Bmas[k][i] = 0.;
+				FTVD.Cmas[k][i] = 0.;
+			}
 
 			if(FArea[i] != FArea12[i] || FCoefAjusFric != 0 || FCoefAjusTC != 0) {
 
@@ -5044,7 +5089,7 @@ void TTubo::CalculaBmas() {
 							g = -f * Vmed * Vmed * 2 / diamemed * FCoefAjusFric;
 
 						/* Half cell (node i to the i+1/2 face) - see CalculaBmen. */
-						FTVD.Bmas[1][i] += 0.5 * FXref * g * rhoAmed;
+						FTVD.Cmas[1][i] += 0.5 * FXref * g * rhoAmed;
 					}
 				}
 
@@ -5060,7 +5105,7 @@ void TTubo::CalculaBmas() {
 					q = q * FCoefAjusTC;
 
 					/* Half cell - see CalculaBmen. */
-					FTVD.Bmas[2][i] = -0.5 * FXref * q * rhoAmed;
+					FTVD.Cmas[2][i] = -0.5 * FXref * q * rhoAmed;
 
 				}
 
@@ -5093,7 +5138,11 @@ void TTubo::CalculaMatrizJacobiana() {
 			RoeConstants();
 
 			// Calculo de las medias de Roe
-			Rmed = sqrtRhoA[i + 1] / sqrtRhoA[i + 1];
+			// Roe density ratio chi = sqrt(rho_{i+1}*A_{i+1} / (rho_i*A_i)), Corberan & Gascon
+			// 1995 eq. 20 (sqrtRhoA[i] = sqrt(rho_i*A_i)). Was sqrtRhoA[i+1]/sqrtRhoA[i+1] (= 1),
+			// which forced an arithmetic mean and broke the Roe linearization at strong rho*A
+			// gradients, driving the mass equation to negative density (Face-1 crash).
+			Rmed = sqrtRhoA[i + 1] / sqrtRhoA[i];
 			Rmed1 = Rmed + 1;
 			gamma = (Rmed * FGamma[i + 1] + FGamma[i]) / Rmed1;
 			gamma1 = gamma - 1;
@@ -5127,7 +5176,15 @@ void TTubo::CalculaMatrizJacobiana() {
 			FTVD.Qmatrix[1][1][i] = gamma1 * Vmed / Amed2;
 			FTVD.Qmatrix[1][2][i] = -gamma1 / Amed2;
 
-			FTVD.Qmatrix[2][0][i] = -(Vmed / Amed + gaAmed2 * Vmed2) / 2.;
+			/* Left eigenvector L = R^{-1} for the (u+a) wave, mass-density component. The
+			 gamma2/a^2 * Vmed^2 term (=b2) must keep the SAME sign as in Qmatrix[0][0] (the u-a
+			 wave); only the Vmed/Amed term flips sign between the two acoustic waves. The code
+			 previously negated BOTH terms (= -Qmatrix[0][0]), which made Qmatrix != Pmatrix^{-1}
+			 and corrupted the characteristic decomposition by an amount proportional to the
+			 conserved-variable jump -- negligible in smooth flow but large at area changes, the
+			 root of the variable-area self-excitation (Face 2) and, with friction removed, the
+			 Face-1 crash. Verified numerically: this restores P*Q = I to machine precision. */
+			FTVD.Qmatrix[2][0][i] = (gaAmed2 * Vmed2 - Vmed / Amed) / 2.;
 			FTVD.Qmatrix[2][1][i] = 0.5 / Amed - gaAmed2 * Vmed;
 			FTVD.Qmatrix[2][2][i] = gaAmed2;
 
@@ -5165,37 +5222,29 @@ void TTubo::TVD_Estabilidad() {
 
 		CalculaMatrizJacobiana();
 
-		CalculaB();
+		/* Half-cell area/friction/heat sources. Corberan & Gascon (1995) eq. 18 uses the SAME
+		 source, B_{i,i+1/2} + B_{i+1/2,i+1} = Bmas[i] + Bmen[i+1], in BOTH the applied flux and
+		 the characteristic projection (DeltaW) below. They depend only on FU0/FArea12/sqrtRhoA,
+		 not on FDeltaTime, so they are valid here. The separate full-cell CalculaB()/Bvector,
+		 which used a third, inconsistent Roe average in the projection only, is retired. */
+		CalculaBmas();
+		CalculaBmen();
 
 		for(int i = 0; i < FNin - 1; i++) {
 			for(int k = 0; k < 3; ++k) {
-				FTVD.DeltaU[k][i] = FTVD.Qmatrix[k][0][i] * (FU0[0][i + 1] - FU0[0][i]) + FTVD.Qmatrix[k][1][i] *
-									(FU0[1][i + 1] - FU0[1][i]) + FTVD.Qmatrix[k][2][i] * (FU0[2][i + 1] - FU0[2][i]);
-				FTVD.DeltaB[k][i] = FTVD.Qmatrix[k][0][i] * FTVD.Bvector[0][i] + FTVD.Qmatrix[k][1][i] * FTVD.Bvector[1][i] +
-									FTVD.Qmatrix[k][2][i] * FTVD.Bvector[2][i];
-				FTVD.DeltaW[k][i] = FTVD.Qmatrix[k][0][i] * (FTVD.W[0][i + 1] - FTVD.W[0][i] + FTVD.Bvector[0][i]) +
-									FTVD.Qmatrix[k][1][i] * (FTVD.W[1][i + 1] - FTVD.W[1][i] + FTVD.Bvector[1][i]) + FTVD.Qmatrix[k][2][i] *
-									(FTVD.W[2][i + 1] - FTVD.W[2][i] + FTVD.Bvector[2][i]);
-				if(fabs(FTVD.DeltaU[k][i]) < 1e-3) {
-					FTVD.Beta[k][i] = FTVD.DeltaB[k][i] / 1e-3;
-				} else {
-					FTVD.Beta[k][i] = FTVD.DeltaB[k][i] / FTVD.DeltaU[k][i];
+				/* Projection of the (flux + source) jump onto the k-th characteristic field,
+				 eq. 18. Corberan & Gascon express EVERY difference as a flux difference: the
+				 scheme carries no conserved-variable (W) difference and no source-augmented
+				 eigenvalue. The former "Beta = DeltaB/DeltaU" term (a W-difference the paper's
+				 conclusion blames for excessive diffusion at strong dA/dx) is removed; the CFL
+				 (eq. 21) and the antidiffusive coefficient (eq. 37) use the pure eigenvalues. */
+				FTVD.DeltaW[k][i] =
+					FTVD.Qmatrix[k][0][i] * (FTVD.W[0][i + 1] - FTVD.W[0][i] + FTVD.Bmas[0][i] + FTVD.Bmen[0][i + 1]) +
+					FTVD.Qmatrix[k][1][i] * (FTVD.W[1][i + 1] - FTVD.W[1][i] + FTVD.Bmas[1][i] + FTVD.Bmen[1][i + 1]) +
+					FTVD.Qmatrix[k][2][i] * (FTVD.W[2][i + 1] - FTVD.W[2][i] + FTVD.Bmas[2][i] + FTVD.Bmen[2][i + 1]);
+				if((VLocal = fabs(FTVD.Alpha[k][i])) > VTotalMax) {   // eq. 21: max(|u| + a)
+					VTotalMax = VLocal;
 				}
-				// if (FNumeroTubo == 63){
-				// printf("%d ",k);
-				// printf("%lf ", FTVD.DeltaB[k][i] );
-				// printf("%lf ", FTVD.DeltaU[k][i] );
-				// if(FTVD.DeltaU[k][i]!=0) printf("%lf ",FTVD.DeltaB[k][i] / FTVD.DeltaU[k][i] );
-				// printf("\n ");
-				// }
-				if(FTVD.Alpha[k][i] + FTVD.Beta[k][i] != 0) {
-					if((VLocal = fabs(FTVD.Alpha[k][i]) + fabs(FTVD.Beta[k][i])) > VTotalMax) {
-						VTotalMax = VLocal;
-					}
-				}
-			}
-			for(int k = 3; k < FNumEcuaciones; k++) {
-				FTVD.Beta[k][i] = 0.;
 			}
 		}
 		DeltaT_tvd = FCourant * FXref / VTotalMax;
@@ -5226,7 +5275,7 @@ void TTubo::TVD_Limitador() {
 		for(int i = 0; i < FNin - 1; ++i) {
 			// Calculo de las variables en el sistema de coordenadas Q
 			for(int k = 0; k < FNumEcuaciones; k++) {
-				FTVD.LandaD[k][i] = dtdx * (FTVD.Alpha[k][i] + FTVD.Beta[k][i]);
+				FTVD.LandaD[k][i] = dtdx * FTVD.Alpha[k][i];   // pure eigenvalue (CG eq. 37); no Beta
 				if(FTVD.LandaD[k][i] >= 0.) {
 					FTVD.hLandaD[k][i] = 1;
 				} else {
@@ -5261,16 +5310,55 @@ void TTubo::TVD_Limitador() {
 		}
 		for(int i = 0; i < FNin - 1; ++i) {
 			for(int k = 0; k < 3; k++) {
-				FTVD.Phi[k][i] = (double) FTVD.hLandaD[k][i] - Limita(FTVD.R[k][i]) * ((double) FTVD.hLandaD[k][i] - FTVD.LandaD[k][i]);
+				// First-order signal-speed coefficient. Default = sign(Alpha+Beta), as before.
+				double hcoef = (double) FTVD.hLandaD[k][i];
+				// Entropy fix (Corberan & Gascon 1995, eqs. 38-40): for the 1st (u-a) and 3rd
+				// (u+a) fields, when the field is a rarefaction (the physical cell eigenvalue,
+				// not the Roe mean, is the extremum of eq. 39) replace sign by the graded ratio
+				// |lambda_cell| / lambda_Roe. This restores the dissipation the Roe mean loses
+				// near sonic points, ruling out stationary (nonphysical) expansion shocks.
+				// lambda_Roe is Alpha (Vmed -/+ Amed); the guard avoids the sonic 0/0.
+				if(k == 0) {
+					double lRoe = FTVD.Alpha[0][i];                           // Roe (u - a)
+					double lCell = FVelocidadDim[i] - FAsonidoDim[i];         // (u - a)_i
+					if(lCell < lRoe && fabs(lRoe) > 1e-8)
+						hcoef = fabs(lCell) / lRoe;
+				} else if(k == 2) {
+					double lRoe = FTVD.Alpha[2][i];                           // Roe (u + a)
+					double lCell = FVelocidadDim[i + 1] + FAsonidoDim[i + 1]; // (u + a)_{i+1}
+					if(lCell > lRoe && fabs(lRoe) > 1e-8)
+						hcoef = fabs(lCell) / lRoe;
+				}
+				FTVD.Phi[k][i] = hcoef - Limita(FTVD.R[k][i]) * (hcoef - FTVD.LandaD[k][i]);
 			}
 		}
 
 		for(int i = 0; i < FNin - 1; ++i) {
 			for(int k = 0; k < 3; ++k) {
+				// Central flux + limited dissipation carry ONLY the reversible area source B
+				// (Bmas/Bmen are area-only after the B/C split; DeltaW likewise). The irreversible
+				// C is added separately below and never limited.
 				FTVD.gflux[k][i] = 0.5 * (FTVD.W[k][i] + FTVD.W[k][i + 1] - FTVD.Bmas[k][i] + FTVD.Bmen[k][i + 1] -
 										  (FTVD.Pmatrix[k][0][i] * FTVD.Phi[0][i] * FTVD.DeltaW[0][i] + FTVD.Pmatrix[k][1][i] * FTVD.Phi[1][i] * FTVD.DeltaW[1][i]
 										   + FTVD.Pmatrix[k][2][i] * FTVD.Phi[2][i] * FTVD.DeltaW[2][i]));
 			}
+			/* Corberan & Gascon (1995) eq. 18: characteristic redistribution of the irreversible
+			 source C (friction + heat), + Dt*(R Lambda L)C at the face i+1/2, with C_{i+1/2} the
+			 source of the two half-cells straddling the face = Cmas[i] + Cmen[i+1]. R Lambda L = J
+			 (the Roe Jacobian), so C is carried along characteristics at the PURE eigenvalues Alpha
+			 -- never through the flux limiter (Phi/h are not used here). OpenWAM's C carries the
+			 opposite sign to the paper's (its direct source is applied with a minus, below), so the
+			 paper's +Dt(RLL)C maps to -0.5*dtdx*(J*Cface) in this gflux. Vanishes with C (e.g. at
+			 rest: friction ~ u^2 = 0, adiabatic q = 0). */
+			double Cface[3], LCf[3];
+			for(int n = 0; n < 3; ++n)
+				Cface[n] = FTVD.Cmas[n][i] + FTVD.Cmen[n][i + 1];
+			for(int m = 0; m < 3; ++m)
+				LCf[m] = FTVD.Qmatrix[m][0][i] * Cface[0] + FTVD.Qmatrix[m][1][i] * Cface[1] + FTVD.Qmatrix[m][2][i] * Cface[2];
+			for(int k = 0; k < 3; ++k)
+				FTVD.gflux[k][i] -= 0.5 * dtdx * (FTVD.Pmatrix[k][0][i] * FTVD.Alpha[0][i] * LCf[0]
+												  + FTVD.Pmatrix[k][1][i] * FTVD.Alpha[1][i] * LCf[1]
+												  + FTVD.Pmatrix[k][2][i] * FTVD.Alpha[2][i] * LCf[2]);
 			for(int k = 3; k < FNumEcuaciones; k++) {
 				FTVD.gflux[k][i] = 0.5 * (FTVD.W[k][i] + FTVD.W[k][i + 1] - (double) FTVD.hLandaD[k][i] *
 										  (FTVD.W[k][i + 1] - FTVD.W[k][i])) + 0.5 * Limita(FTVD.R[k][i]) * ((double) FTVD.hLandaD[k][i] - FTVD.LandaD[k][i]) *
@@ -5280,7 +5368,11 @@ void TTubo::TVD_Limitador() {
 		}
 		for(int i = 1; i < FNin - 1; ++i) {
 			for(int k = 0; k < FNumEcuaciones; k++) {
-				FU1[k][i] = FU0[k][i] - dtdx * ((FTVD.gflux[k][i] - FTVD.gflux[k][i - 1]) + (FTVD.Bmen[k][i] + FTVD.Bmas[k][i]));
+				// Direct cell source (CG eq. 17): area B (Bmen+Bmas, for the reorganised area
+				// well-balancing) plus the irreversible C = Dt*C_i (Cmen+Cmas). The B+C sum equals
+				// the pre-split total, so area behaviour is unchanged; only C's flux path moved.
+				FU1[k][i] = FU0[k][i] - dtdx * ((FTVD.gflux[k][i] - FTVD.gflux[k][i - 1])
+												+ (FTVD.Bmen[k][i] + FTVD.Bmas[k][i] + FTVD.Cmen[k][i] + FTVD.Cmas[k][i]));
 			}
 		}
 #ifdef usetry
@@ -5386,6 +5478,8 @@ void TTubo::DimensionaTVD() {
 		FTVD.Bmas = new double*[FNumEcuaciones];
 		FTVD.Bvector = new double*[FNumEcuaciones];
 		FTVD.Bmen = new double*[FNumEcuaciones];
+		FTVD.Cmas = new double*[FNumEcuaciones];
+		FTVD.Cmen = new double*[FNumEcuaciones];
 		FTVD.gflux = new double*[FNumEcuaciones];
 		FTVD.Alpha = new double*[FNumEcuaciones];
 		FTVD.Beta = new double*[FNumEcuaciones];
@@ -5406,6 +5500,8 @@ void TTubo::DimensionaTVD() {
 			FTVD.Bmas[k] = new double[FNin];
 			FTVD.Bvector[k] = new double[FNin];
 			FTVD.Bmen[k] = new double[FNin];
+			FTVD.Cmas[k] = new double[FNin];
+			FTVD.Cmen[k] = new double[FNin];
 			FTVD.gflux[k] = new double[FNin];
 			FTVD.Alpha[k] = new double[FNin];
 			FTVD.Beta[k] = new double[FNin];

@@ -306,6 +306,8 @@ struct stTVD {
 	double **Bmas;
 	double **Bvector;
 	double **Bmen;
+	double **Cmas;   //!< Irreversible (friction+heat) half-cell source, node i -> face i+1/2 (CG 1995 eq. 3 vector C)
+	double **Cmen;   //!< Irreversible (friction+heat) half-cell source, face i-1/2 -> node i
 	double ***Qmatrix;
 	double ***Pmatrix;
 	double **gflux;
