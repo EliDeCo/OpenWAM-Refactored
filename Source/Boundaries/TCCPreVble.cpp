@@ -170,12 +170,35 @@ void TCCPreVble::CalculaCondicionContorno(double Time) {
 
 		if(rel_CCon_entropia / yyy < 1.0) {
 
-			Ason = sqrt(FGamma * R * __units::degCToK(Temp)) / __cons::ARef;
-			double AA = Ason / pow(Pressure, __Gamma::G5(FGamma));
-			double U = (*FCC - Ason * FTuboExtremo[0].Entropia / AA) / Gamma3;
-			*FCC = Ason + Gamma3 * U;
-			*FCD = Ason - Gamma3 * U;
-			FTuboExtremo[0].Entropia = Ason / pow(Pressure, __Gamma::G5(FGamma));
+			/* Reservoir (stagnation) inflow. The tabulated pressure/temperature are treated as the
+			 reservoir STAGNATION state; the gas accelerates isentropically into the pipe. This makes
+			 the inlet energy-passive (reflection |R| = (1-M)/(1+M) < 1) instead of pinning the static
+			 pressure (|R| = 1). The static-pressure form injected acoustic energy under mean flow and
+			 self-excited variable-area ducts between two reflecting ends (a bounded, silent, mesh- and
+			 solver-independent ~a/2L limit cycle; confirmed as a real linear instability of the
+			 continuous quasi-1D problem, sourced entirely at the p'=0 boundary, by an independent
+			 acoustic eigensolver). Ported from the reservoir-inflow branch of
+			 TCCDescargaExtremoAbierto; lossless (Cd = 1, i.e. no discharge loss). */
+			double a0 = sqrt(FGamma * R * __units::degCToK(Temp)) / __cons::ARef; // reservoir sound speed
+			double aap = a0 / yyy;                        // entropy datum of the reservoir state
+			double xyx = aap / FTuboExtremo[0].Entropia;
+			const double Cd = 1.0;                        // discharge loss coefficient (1 = lossless)
+			double bb = __Gamma::G1(FGamma) * *FCC * pow2(xyx) * Cd;
+			double a2 = pow2(Gamma3 * xyx * Cd) + Gamma3;
+			double cc = pow2(xyx * *FCC) - pow2(a0);
+			double u_isen = (-bb + sqrt(pow2(bb) - a2 * 4. * cc)) / (2. * a2);
+			double a_isen = sqrt(pow2(a0) - Gamma3 * pow2(u_isen));
+			double u_real = u_isen * Cd;
+			double a_real = sqrt(pow2(a0) - Gamma3 * pow2(u_real));
+			aap = a_real / a_isen * aap;
+			if(fabs(u_real) > a_real) {                   // choked (sonic) guard
+				a_real = sqrt(2 / __Gamma::G2(FGamma)) * a0;
+				u_real = a_real;
+				aap = FTuboExtremo[0].Entropia * a_real / (*FCC + Gamma3 * u_real);
+			}
+			*FCC = a_real - Gamma3 * u_real;
+			*FCD = a_real + Gamma3 * u_real;
+			FTuboExtremo[0].Entropia = aap;
 		} else {
 			Ason = FTuboExtremo[0].Entropia * pow(Pressure, __Gamma::G5(FGamma));
 			*FCD = 2 * Ason - *FCC;
