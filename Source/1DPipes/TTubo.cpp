@@ -5133,9 +5133,13 @@ void TTubo::CalculaMatrizJacobiana() {
 
 		Ymed = new double[FNumeroEspecies - 1 - FIntEGR];
 
-		for(int i = 0; i < FNin - 1; i++) {
+		// sqrtRhoA depends only on FU1, not on the face index i, so compute the whole
+		// array ONCE here. It was previously recomputed inside every face iteration,
+		// making this routine O(N^2) (the dominant cost of the whole solver for long
+		// pipes). Hoisting restores O(N) and is bit-identical (RoeConstants is idempotent).
+		RoeConstants();
 
-			RoeConstants();
+		for(int i = 0; i < FNin - 1; i++) {
 
 			// Calculo de las medias de Roe
 			// Roe density ratio chi = sqrt(rho_{i+1}*A_{i+1} / (rho_i*A_i)), Corberan & Gascon
