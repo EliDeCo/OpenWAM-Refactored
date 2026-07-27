@@ -3751,7 +3751,19 @@ void TTubo::CalculaCoeficientePeliculaInterior(TCondicionContorno **BC) {
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
-void TTubo::CalculaTemperaturaPared(TBloqueMotor **Engine, double Theta, double CrankAngle, TCondicionContorno **BC) {
+void TTubo::TomaFotoParedAnt() {
+	for(int i = 0; i < FNin; i++) {
+		FTParedAnt[0][i] = FTPTubo[0][i];
+		FTParedAnt[1][i] = FTPTubo[1][i];
+		FTParedAnt[2][i] = FTPTubo[2][i];
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+void TTubo::CalculaTemperaturaPared(TBloqueMotor **Engine, double Theta, double CrankAngle, TCondicionContorno **BC,
+									bool tomarFoto) {
 	double Tg = 0.;
 	double zzz = 0., czz = 0., cz1 = 0., uq1 = 0.;
 	double DeltaTTPared = 0.;
@@ -3762,13 +3774,15 @@ void TTubo::CalculaTemperaturaPared(TBloqueMotor **Engine, double Theta, double 
 	try {
 #endif
 
+		// Snapshot the previous-step wall temperature. Skipped when a parallel pre-pass has
+		// already taken every pipe's snapshot (Common path) so the neighbour reads below hit
+		// frozen data. FTPTubo is written only here in Phase 3, so pre-pass == in-place snapshot.
+		if(tomarFoto)
+			TomaFotoParedAnt();
+
 		DeltaTTPared = FTime1 - FTime0;
 
 		for(int i = 0; i < FNin; i++) {
-			FTParedAnt[0][i] = FTPTubo[0][i];
-			FTParedAnt[1][i] = FTPTubo[1][i];
-			FTParedAnt[2][i] = FTPTubo[2][i];
-
 			zzz = 0.013 / DeltaTTPared;
 			czz = 2 / (zzz + 1);
 			uq1 = fabs(FVelocidadDim[i]);
@@ -4070,7 +4084,7 @@ void TTubo::CalculaTemperaturaPared(TBloqueMotor **Engine, double Theta, double 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
-void TTubo::CalculaTemperaturaParedSinMotor(TCondicionContorno **BC) {
+void TTubo::CalculaTemperaturaParedSinMotor(TCondicionContorno **BC, bool tomarFoto) {
 	double Tg = 0.;
 	double zzz = 0., czz = 0., cz1 = 0., uq1 = 0.;
 	double DeltaTTPared = 0.;
@@ -4082,13 +4096,13 @@ void TTubo::CalculaTemperaturaParedSinMotor(TCondicionContorno **BC) {
 	try {
 #endif
 
+		// See CalculaTemperaturaPared: snapshot skipped when a parallel pre-pass already took it.
+		if(tomarFoto)
+			TomaFotoParedAnt();
+
 		DeltaTTPared = FTime1 - FTime0;
 
 		for(int i = 0; i < FNin; i++) {
-			FTParedAnt[0][i] = FTPTubo[0][i];
-			FTParedAnt[1][i] = FTPTubo[1][i];
-			FTParedAnt[2][i] = FTPTubo[2][i];
-
 			zzz = 0.013 / DeltaTTPared;
 			czz = 2 / (zzz + 1);
 			uq1 = fabs(FVelocidadDim[i]);

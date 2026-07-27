@@ -3648,9 +3648,9 @@ void TOpenWAM::CalculateFlowCommon() {
 	// Phase 1 (interior solver + end characteristics) is embarrassingly parallel
 	// over pipes: each pipe writes only its own interior state and its own BC
 	// slot, so the result is order-independent and bit-identical to serial.
-	// Phase 2 (junctions) and Phase 3 (update + post-processing) stay serial:
-	// Phase 3's CalculaTemperaturaPared reads a neighbour pipe's FTParedAnt
-	// across a junction when wall conduction is active, which is not race-free.
+	// Phase 2 (junctions) and the tail stay serial; Phase 3 is parallelised
+	// separately below (its one cross-pipe read, wall-temp conduction, is made
+	// race-free by taking every pipe's FTParedAnt snapshot in a pre-pass first).
 #ifdef WITH_OPENMP
 	#pragma omp parallel for num_threads(fc_num_threads) schedule(dynamic)
 #endif
@@ -3686,6 +3686,23 @@ void TOpenWAM::CalculateFlowCommon() {
 		}
 	}
 
+	// Phase 3 pre-pass: snapshot every pipe's wall temperature (FTParedAnt) up front, in parallel.
+	// Taking all snapshots before any update means the neighbour-conduction reads in the wall-temp
+	// step below hit frozen data, so the main pass is race-free even with cross-pipe conduction on.
+#ifdef WITH_OPENMP
+	#pragma omp parallel for num_threads(fc_num_threads) schedule(dynamic)
+#endif
+	for(int j = 0; j < NumberOfPipes; j++) {
+		if(!Pipe[j]->getConcentrico())
+			Pipe[j]->TomaFotoParedAnt();
+	}
+
+	// Phase 3 main pass: update + post-processing, parallel over pipes. Each pipe writes only its own
+	// state; the sole cross-pipe read (wall-temp conduction) now sees the frozen pre-pass snapshot,
+	// so wall-temp is told not to snapshot again (tomarFoto = false).
+#ifdef WITH_OPENMP
+	#pragma omp parallel for num_threads(fc_num_threads) schedule(dynamic)
+#endif
 	for(int j = 0; j < NumberOfPipes; j++) {
 		Pipe[j]->ActualizaValoresNuevos(BC);
 		Pipe[j]->ActualizaPropiedadesGas();
@@ -3704,9 +3721,9 @@ void TOpenWAM::CalculateFlowCommon() {
 		}
 		if(!Pipe[j]->getConcentrico()) {
 			if(Engine != NULL) {
-				Pipe[j]->CalculaTemperaturaPared(Engine, Theta, CrankAngle, BC);
+				Pipe[j]->CalculaTemperaturaPared(Engine, Theta, CrankAngle, BC, false);
 			} else {
-				Pipe[j]->CalculaTemperaturaParedSinMotor(BC);
+				Pipe[j]->CalculaTemperaturaParedSinMotor(BC, false);
 			}
 		} else {
 #ifdef ConcentricElement

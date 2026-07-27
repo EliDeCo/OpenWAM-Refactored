@@ -1168,10 +1168,17 @@ class TTubo {
 	void CalculaTemperaturaPared(TBloqueMotor ** Engine,     //!< Comment
 								 double Theta,      //!< Comment
 								 double CrankAngle,     //!< Comment
-								 TCondicionContorno ** BC         //!< Comment
+								 TCondicionContorno ** BC,         //!< Comment
+								 bool tomarFoto = true  //!< Snapshot FTParedAnt internally; false when a pre-pass already did it
 								);
 
-	void CalculaTemperaturaParedSinMotor(TCondicionContorno **BC);
+	void CalculaTemperaturaParedSinMotor(TCondicionContorno **BC, bool tomarFoto = true);
+
+	//! Snapshot the current wall temperatures FTPTubo into FTParedAnt (the "previous step"
+	//! wall temperature read by neighbour pipes for cross-pipe conduction). Extracted from the
+	//! wall-temperature routines so the Common path can take every pipe's snapshot in a parallel
+	//! pre-pass, before any pipe reads a neighbour's snapshot -> race-free wall conduction.
+	void TomaFotoParedAnt();
 
 	/*!Comment  */
 	void AjustaPaso(double Intervalo                //!< Comment
