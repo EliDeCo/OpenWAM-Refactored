@@ -338,6 +338,8 @@ class TOpenWAM {
 
 	int fi_num_threads; ///< Available threads for CalculateFlowIndependent.
 
+	int fc_num_threads; ///< Available threads for CalculateFlowCommon (pipe-level).
+
 	/**
 	 * @brief Assigns the number of threads for CalculateFlowIndependent.
 	 *
@@ -347,6 +349,16 @@ class TOpenWAM {
 	 * observes it.
 	 */
 	void InitFlowIndependentNumThreads();
+
+	/**
+	 * @brief Assigns the number of threads for CalculateFlowCommon.
+	 *
+	 * The Common path parallelizes over pipes, so it uses
+	 * min(NumberOfPipes, available threads) threads (no 3-cap). It counts
+	 * the number of available processors, honouring OMP_NUM_THREADS if set.
+	 * Must be called after ReadPipes() so NumberOfPipes is known.
+	 */
+	void InitFlowCommonNumThreads();
 
 	void CleanLabelsX();
 

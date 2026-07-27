@@ -196,6 +196,7 @@ TOpenWAM::TOpenWAM() {
 	TimeEndStep = 0.;
 
 	InitFlowIndependentNumThreads();
+	fc_num_threads = 1; // Set properly by InitFlowCommonNumThreads() after ReadPipes().
 }
 
 TOpenWAM::~TOpenWAM() {
@@ -490,6 +491,9 @@ void TOpenWAM::ReadInputData(char* FileName) {
 	ReadEngine();
 
 	ReadPipes();
+
+	// NumberOfPipes is now known: size the Common-path thread pool.
+	InitFlowCommonNumThreads();
 
 #ifdef ParticulateFilter
 	ReadDPF();
@@ -3641,6 +3645,15 @@ void TOpenWAM::UpdateTurbocharger() {
 
 void TOpenWAM::CalculateFlowCommon() {
 
+	// Phase 1 (interior solver + end characteristics) is embarrassingly parallel
+	// over pipes: each pipe writes only its own interior state and its own BC
+	// slot, so the result is order-independent and bit-identical to serial.
+	// Phase 2 (junctions) and Phase 3 (update + post-processing) stay serial:
+	// Phase 3's CalculaTemperaturaPared reads a neighbour pipe's FTParedAnt
+	// across a junction when wall conduction is active, which is not race-free.
+#ifdef WITH_OPENMP
+	#pragma omp parallel for num_threads(fc_num_threads) schedule(dynamic)
+#endif
 	for(int j = 0; j < NumberOfPipes; j++) {
 		Pipe[j]->CalculaVariablesFundamentales();
 		Pipe[j]->CalculaCaracteristicasExtremos(BC, Run.TimeStep);
@@ -4119,6 +4132,33 @@ void TOpenWAM::InitFlowIndependentNumThreads() {
 		fi_num_threads = 3;
 	} else if(n_threads > 1) {
 		fi_num_threads = 2;
+	}
+#endif
+}
+
+void TOpenWAM::InitFlowCommonNumThreads() {
+	fc_num_threads = 1;
+#ifdef WITH_OPENMP
+	std::stringstream ss;
+	int n_threads = 0;
+	char const* env_value = getenv("OMP_NUM_THREADS");
+	if(env_value == NULL) {
+		n_threads = omp_get_num_procs();
+	} else {
+		ss.str(env_value);
+		if(!(ss >> n_threads)) {
+			// OMP_NUM_THREADS isn't a valid integer.
+			n_threads = 1;
+		}
+	}
+	if(n_threads < 1) {
+		n_threads = 1;
+	}
+	// The Common path parallelizes over pipes: use as many threads as pipes,
+	// but never more than the machine (or OMP_NUM_THREADS) allows.
+	fc_num_threads = (NumberOfPipes < n_threads) ? NumberOfPipes : n_threads;
+	if(fc_num_threads < 1) {
+		fc_num_threads = 1;
 	}
 #endif
 }
