@@ -55,6 +55,28 @@
 
 #include "TTubo.h"
 #include "TBloqueMotor.h"
+#include <malloc.h>   // _aligned_malloc / _aligned_free for SoA-aligned FTVD storage
+
+namespace {
+// Stage-1 SoA helpers: allocate one 32-byte-aligned contiguous block and expose it as `nrows`
+// row-views [k] = base + k*Npad. The base is recoverable as views[0] (freed with _aligned_free);
+// the pointer-array itself is a normal new[]/delete[]. Npad >= FNin, a multiple of 4, so every
+// double row starts 32-byte aligned and vector tails are remainder-friendly.
+inline double **AllocAlignedRows(int nrows, size_t Npad) {
+	double *base = static_cast<double *>(_aligned_malloc(static_cast<size_t>(nrows) * Npad * sizeof(double), 32));
+	double **rows = new double *[nrows];
+	for(int k = 0; k < nrows; ++k)
+		rows[k] = base + static_cast<size_t>(k) * Npad;
+	return rows;
+}
+inline int **AllocAlignedRowsInt(int nrows, size_t Npad) {
+	int *base = static_cast<int *>(_aligned_malloc(static_cast<size_t>(nrows) * Npad * sizeof(int), 32));
+	int **rows = new int *[nrows];
+	for(int k = 0; k < nrows; ++k)
+		rows[k] = base + static_cast<size_t>(k) * Npad;
+	return rows;
+}
+}
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
@@ -181,6 +203,13 @@ TTubo::TTubo(int SpeciesNumber, int j, double SimulationDuration, TBloqueMotor *
 	Fhe = NULL;
 	Frho = NULL;
 	FRe = NULL;
+	FLWhi12 = NULL;
+	FLWrho12 = NULL;
+	FLWRe12 = NULL;
+	FLWTPTubo12 = NULL;
+	FLWGamma12 = NULL;
+	FLWRmezcla12 = NULL;
+	FLWGamma1_12 = NULL;
 	FTVD.Bmas = NULL;
 	FTVD.Bvector = NULL;
 	FTVD.Bmen = NULL;
@@ -199,6 +228,7 @@ TTubo::TTubo(int SpeciesNumber, int j, double SimulationDuration, TBloqueMotor *
 	FTVD.Phi = NULL;
 	FTVD.R = NULL;
 	FTVD.W = NULL;
+	sqrtRhoA = NULL;
 
 	FCapa = NULL;
 
@@ -442,52 +472,33 @@ TTubo::~TTubo() {
 	if(FCourantLocal != NULL)
 		delete[] FCourantLocal;
 
-	for(int i = 0; i < FNumEcuaciones; i++) {
-		for(int k = 0; k < FNumEcuaciones; k++) {
-			if(FTVD.Pmatrix != NULL)
-				delete[] FTVD.Pmatrix[i][k];
-			if(FTVD.Qmatrix != NULL)
-				delete[] FTVD.Qmatrix[i][k];
-		}
-		if(FTVD.Pmatrix != NULL)
+	// FTVD arrays (SoA): each field's data is a single _aligned_malloc block (base = view[0], or
+	// Pmatrix[0][0]/Qmatrix[0][0] for the 3-D matrices). Free the data blocks here; the view
+	// pointer-arrays (double**/double***) are freed by the delete[] below. Bvector/Beta/DeltaU/DeltaB
+	// are never allocated (stay NULL) - nothing to free.
+	if(FTVD.Pmatrix != NULL) {
+		_aligned_free(FTVD.Pmatrix[0][0]);
+		for(int i = 0; i < FNumEcuaciones; i++)
 			delete[] FTVD.Pmatrix[i];
-		if(FTVD.Qmatrix != NULL)
+	}
+	if(FTVD.Qmatrix != NULL) {
+		_aligned_free(FTVD.Qmatrix[0][0]);
+		for(int i = 0; i < FNumEcuaciones; i++)
 			delete[] FTVD.Qmatrix[i];
 	}
-	for(int i = 0; i < FNumEcuaciones; i++) {
-		if(FTVD.Bmas != NULL)
-			delete[] FTVD.Bmas[i];
-		if(FTVD.Bmen != NULL)
-			delete[] FTVD.Bmen[i];
-		if(FTVD.Cmas != NULL)
-			delete[] FTVD.Cmas[i];
-		if(FTVD.Cmen != NULL)
-			delete[] FTVD.Cmen[i];
-		if(FTVD.Bvector != NULL)
-			delete[] FTVD.Bvector[i];
-		if(FTVD.gflux != NULL)
-			delete[] FTVD.gflux[i];
-		if(FTVD.Alpha != NULL)
-			delete[] FTVD.Alpha[i];
-		if(FTVD.Beta != NULL)
-			delete[] FTVD.Beta[i];
-		if(FTVD.DeltaU != NULL)
-			delete[] FTVD.DeltaU[i];
-		if(FTVD.DeltaB != NULL)
-			delete[] FTVD.DeltaB[i];
-		if(FTVD.DeltaW != NULL)
-			delete[] FTVD.DeltaW[i];
-		if(FTVD.hLandaD != NULL)
-			delete[] FTVD.hLandaD[i];
-		if(FTVD.LandaD != NULL)
-			delete[] FTVD.LandaD[i];
-		if(FTVD.Phi != NULL)
-			delete[] FTVD.Phi[i];
-		if(FTVD.W != NULL)
-			delete[] FTVD.W[i];
-		if(FTVD.R != NULL)
-			delete[] FTVD.R[i];
-	}
+	if(FTVD.Bmas != NULL)    _aligned_free(FTVD.Bmas[0]);
+	if(FTVD.Bmen != NULL)    _aligned_free(FTVD.Bmen[0]);
+	if(FTVD.Cmas != NULL)    _aligned_free(FTVD.Cmas[0]);
+	if(FTVD.Cmen != NULL)    _aligned_free(FTVD.Cmen[0]);
+	if(FTVD.gflux != NULL)   _aligned_free(FTVD.gflux[0]);
+	if(FTVD.Alpha != NULL)   _aligned_free(FTVD.Alpha[0]);
+	if(FTVD.DeltaW != NULL)  _aligned_free(FTVD.DeltaW[0]);
+	if(FTVD.hLandaD != NULL) _aligned_free(FTVD.hLandaD[0]);
+	if(FTVD.LandaD != NULL)  _aligned_free(FTVD.LandaD[0]);
+	if(FTVD.Phi != NULL)     _aligned_free(FTVD.Phi[0]);
+	if(FTVD.R != NULL)       _aligned_free(FTVD.R[0]);
+	if(FTVD.W != NULL)       _aligned_free(FTVD.W[0]);
+	if(sqrtRhoA != NULL)     _aligned_free(sqrtRhoA);
 
 	if(FTVD.Pmatrix != NULL)
 		delete[] FTVD.Pmatrix;
@@ -543,6 +554,22 @@ TTubo::~TTubo() {
 		delete[] FCapMed;
 	if(FCapExt != NULL)
 		delete[] FCapExt;
+
+	// LaxWendroff half-node scratch (preallocated, reused across steps).
+	if(FLWhi12 != NULL)
+		delete[] FLWhi12;
+	if(FLWrho12 != NULL)
+		delete[] FLWrho12;
+	if(FLWRe12 != NULL)
+		delete[] FLWRe12;
+	if(FLWTPTubo12 != NULL)
+		delete[] FLWTPTubo12;
+	if(FLWGamma12 != NULL)
+		delete[] FLWGamma12;
+	if(FLWRmezcla12 != NULL)
+		delete[] FLWRmezcla12;
+	if(FLWGamma1_12 != NULL)
+		delete[] FLWGamma1_12;
 
 }
 
@@ -1612,15 +1639,21 @@ void TTubo::LaxWendroff() {
 	try {
 #endif
 		int Nodos = 0;
-		double x1, x2, x3, x4, *hi12, *rho12, *Re12, *TPTubo12, *Gamma12, *Rmezcla12, *Gamma1_12;
-
-		hi12 = new double[FNin - 1];
-		rho12 = new double[FNin - 1];
-		Re12 = new double[FNin - 1];
-		TPTubo12 = new double[FNin - 1];
-		Gamma12 = new double[FNin - 1];
-		Rmezcla12 = new double[FNin - 1];
-		Gamma1_12 = new double[FNin - 1];
+		double x1, x2, x3, x4;
+		// Half-node scratch: allocate once (lazily) into members, then reuse every step
+		// instead of new[]/delete[] on every call. A pipe uses only LaxWendroff OR
+		// LaxWendroffArea, so the two may share these buffers (both sized FNin-1).
+		if(FLWhi12 == NULL) {
+			FLWhi12 = new double[FNin - 1];
+			FLWrho12 = new double[FNin - 1];
+			FLWRe12 = new double[FNin - 1];
+			FLWTPTubo12 = new double[FNin - 1];
+			FLWGamma12 = new double[FNin - 1];
+			FLWRmezcla12 = new double[FNin - 1];
+			FLWGamma1_12 = new double[FNin - 1];
+		}
+		double *hi12 = FLWhi12, *rho12 = FLWrho12, *Re12 = FLWRe12, *TPTubo12 = FLWTPTubo12,
+			   *Gamma12 = FLWGamma12, *Rmezcla12 = FLWRmezcla12, *Gamma1_12 = FLWGamma1_12;
 
 		double dtdx = FDeltaTime / FXref;
 		double dt2 = FDeltaTime / 2;
@@ -1671,14 +1704,7 @@ void TTubo::LaxWendroff() {
 			}
 		}
 
-		// Liberacion de memoria en vectores locales.
-		delete[] hi12;
-		delete[] rho12;
-		delete[] Re12;
-		delete[] TPTubo12;
-		delete[] Gamma12;
-		delete[] Rmezcla12;
-		delete[] Gamma1_12;
+		// Half-node scratch (FLW*) is preallocated and reused; freed in the destructor.
 #ifdef usetry
 	} catch(exception & N) {
 		std::cout << "ERROR: TTubo::LaxWendrof en el tubo: " << FNumeroTubo << std::endl;
@@ -1853,15 +1879,21 @@ void TTubo::LaxWendroffArea() {
 	try {
 #endif
 		int Nodos = 0;
-		double x1, x2, x3, x4, *hi12, *rho12, *Re12, *TPTubo12, *Gamma12, *Rmezcla12, *Gamma1_12;
-
-		hi12 = new double[FNin - 1];
-		rho12 = new double[FNin - 1];
-		Re12 = new double[FNin - 1];
-		TPTubo12 = new double[FNin - 1];
-		Gamma12 = new double[FNin - 1];
-		Rmezcla12 = new double[FNin - 1];
-		Gamma1_12 = new double[FNin - 1];
+		double x1, x2, x3, x4;
+		// Half-node scratch: allocate once (lazily) into members, then reuse every step
+		// instead of new[]/delete[] on every call. A pipe uses only LaxWendroff OR
+		// LaxWendroffArea, so the two may share these buffers (both sized FNin-1).
+		if(FLWhi12 == NULL) {
+			FLWhi12 = new double[FNin - 1];
+			FLWrho12 = new double[FNin - 1];
+			FLWRe12 = new double[FNin - 1];
+			FLWTPTubo12 = new double[FNin - 1];
+			FLWGamma12 = new double[FNin - 1];
+			FLWRmezcla12 = new double[FNin - 1];
+			FLWGamma1_12 = new double[FNin - 1];
+		}
+		double *hi12 = FLWhi12, *rho12 = FLWrho12, *Re12 = FLWRe12, *TPTubo12 = FLWTPTubo12,
+			   *Gamma12 = FLWGamma12, *Rmezcla12 = FLWRmezcla12, *Gamma1_12 = FLWGamma1_12;
 
 		double dtdx = FDeltaTime / FXref;
 		double dt2 = FDeltaTime / 2.;
@@ -1912,14 +1944,7 @@ void TTubo::LaxWendroffArea() {
 			}
 		}
 
-		// Liberacion de memoria en vectores locales.
-		delete[] hi12;
-		delete[] rho12;
-		delete[] Re12;
-		delete[] TPTubo12;
-		delete[] Gamma12;
-		delete[] Rmezcla12;
-		delete[] Gamma1_12;
+		// Half-node scratch (FLW*) is preallocated and reused; freed in the destructor.
 #ifdef usetry
 	} catch(exception & N) {
 		std::cout << "ERROR: TTubo::LaxWendroffArea en el tubo: " << FNumeroTubo << std::endl;
@@ -4829,97 +4854,9 @@ void TTubo::InicializaCaracteristicas(TCondicionContorno **BC) {
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
-void TTubo::CalculaB() {
-#ifdef usetry
-	try {
-#endif
-		double v = 0., p = 0., f = 0., tgas = 0., g = 0., q = 0., diamemed = 0., Rm = 0., Rm1 = 0.;
-		double Remed, gamma, gamma1, Rmed, himed, rhomed, twallmed, Vmed, H1, H2, Hmed, Amed, rhoAmed;
-
-		for(int i = 0; i < FNin - 1; i++) {
-
-			FTVD.Bvector[0][i] = 0.;
-
-			FTVD.Bvector[1][i] = 0.;
-
-			FTVD.Bvector[2][i] = 0.;
-
-			// Species transport equations (k >= 3) are passively advected and have
-			// no area/friction/heat source. Their source vector was never set here,
-			// leaving uninitialized garbage that the TVD update injects into the
-			// species mass every step. Zero it explicitly.
-			for(int k = 3; k < FNumEcuaciones; k++)
-				FTVD.Bvector[k][i] = 0.;
-
-			if(FArea[i] != FArea[i + 1] || FCoefAjusFric != 0 || FCoefAjusTC != 0) {
-
-				// Roe density ratio chi = sqrt(rho_{i+1}*A_{i+1} / (rho_i*A_i)), Corberan & Gascon
-				// 1995 eq. 20 (sqrtRhoA[i] = sqrt(rho_i*A_i)). Was sqrtRhoA[i+1]/sqrtRhoA[i+1] (= 1),
-				// which forced an arithmetic mean in the area/friction source vector Bvector.
-				Rm = sqrtRhoA[i + 1] / sqrtRhoA[i];
-				Rm1 = Rm + 1;
-				gamma = (Rm * FGamma[i + 1] + FGamma[i]) / Rm1;
-				gamma1 = gamma - 1;
-				// gamma2 = gamma1 / 2;
-
-				Vmed = (Rm * FVelocidadDim[i + 1] + FVelocidadDim[i]) / Rm1;
-
-				if(FArea[i] != FArea[i + 1] || FCoefAjusTC != 0) {
-
-					H1 = 0.5 * FVelocidadDim[i] * FVelocidadDim[i] + FAsonidoDim[i] * FAsonidoDim[i] / gamma1;
-					H2 = 0.5 * FVelocidadDim[i + 1] * FVelocidadDim[i + 1] + FAsonidoDim[i + 1] * FAsonidoDim[i + 1] / gamma1;
-					Hmed = (Rm * H2 + H1) / Rm1;
-					Amed = sqrt(gamma1 * (Hmed - 0.5 * Vmed * Vmed));
-					rhomed = sqrt(Frho[i] * Frho[i + 1]);
-
-				}
-				if(FCoefAjusFric != 0 || FCoefAjusTC != 0) {
-					rhoAmed = sqrtRhoA[i + 1] * sqrtRhoA[i + 1];
-				}
-
-				if(FArea[i] != FArea[i + 1]) {
-					FTVD.Bvector[1][i] += rhomed * Amed * Amed / gamma * (FArea[i] - FArea[i + 1]);
-				}
-
-				if(FCoefAjusFric != 0) {
-					Remed = 0.5 * (FRe[i] + FRe[i + 1]);
-					if(Remed > 1e-6) {
-						Colebrook(FFriccion, FDiametroD12[i], f, Remed);
-						if(Vmed >= 0.)
-							g = f * Vmed * Vmed * 2 / FDiametroD12[i] * FCoefAjusFric;
-						else
-							g = -f * Vmed * Vmed * 2 / FDiametroD12[i] * FCoefAjusFric;
-
-						FTVD.Bvector[1][i] += FXref * g * rhoAmed;
-					}
-				}
-
-				if(FCoefAjusTC != 0) {
-					Rmed = 0.5 * (FRMezcla[i] + FRMezcla[i + 1]);
-					himed = 0.5 * (Fhi[i] + Fhi[i + 1]);
-					twallmed = 0.5 * (FTPTubo[0][i] + FTPTubo[0][i + 1]);
-
-					tgas = Amed * Amed / gamma / Rmed;
-
-					TransmisionCalor(tgas, FDiametroD12[i], q, himed, rhomed, twallmed);
-
-					q = q * FCoefAjusTC;
-
-					FTVD.Bvector[2][i] = -FXref * q * rhoAmed;
-
-				}
-
-			}
-
-		}
-#ifdef usetry
-	} catch(exception & N) {
-		std::cout << "ERROR: TTubo::CalculaB tubo:" << FNumeroTubo << std::endl;
-		std::cout << "Tipo de error: " << N.what() << std::endl;
-		throw Exception(N.what());
-	}
-#endif
-}
+// TTubo::CalculaB() (the retired full-cell area/friction/heat source that wrote FTVD.Bvector)
+// has been removed. It was never called -- the half-cell CalculaBmas/CalculaBmen pair replaced it
+// (see TVD_Estabilidad) -- and FTVD.Bvector is no longer allocated (see DimensionaTVD).
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
@@ -5143,9 +5080,7 @@ void TTubo::CalculaMatrizJacobiana() {
 	try {
 #endif
 		double Rmed = 0., Vmed = 0., Vmed2 = 0., Hmed = 0., Amed = 0., Amed2 = 0., gamma = 0., H1 = 0., H2 = 0., Rmed1 = 0.;
-		double *Ymed, gamma1, gamma2, gaAmed2;
-
-		Ymed = new double[FNumeroEspecies - 1 - FIntEGR];
+		double gamma1, gamma2, gaAmed2;
 
 		// sqrtRhoA depends only on FU1, not on the face index i, so compute the whole
 		// array ONCE here. It was previously recomputed inside every face iteration,
@@ -5172,9 +5107,6 @@ void TTubo::CalculaMatrizJacobiana() {
 			Hmed = (Rmed * H2 + H1) / Rmed1;
 			Amed2 = gamma1 * (Hmed - 0.5 * Vmed2);
 			Amed = sqrt(Amed2);
-			for(int j = 0; j < FNumeroEspecies - 1 - FIntEGR; j++) {
-				Ymed[j] = (Rmed * FFraccionMasicaEspecie[i + 1][j] + FFraccionMasicaEspecie[i][j]) / Rmed1;
-			}
 
 			FTVD.Pmatrix[1][0][i] = Vmed - Amed;
 			FTVD.Pmatrix[1][1][i] = Vmed;
@@ -5185,9 +5117,13 @@ void TTubo::CalculaMatrizJacobiana() {
 			FTVD.Pmatrix[2][2][i] = Hmed + Vmed * Amed;
 
 			gaAmed2 = gamma2 / Amed2;
+			// CSE: Vmed/Amed and 0.5/Amed each appear in two eigenvector components (the u-a and
+			// u+a waves); compute each division once. Bit-identical (-0.5/Amed == -(0.5/Amed)).
+			double VmedOverAmed = Vmed / Amed;
+			double halfOverAmed = 0.5 / Amed;
 			// Calculo de la matriz Q (autovectores a la derecha)
-			FTVD.Qmatrix[0][0][i] = (Vmed / Amed + gaAmed2 * Vmed2) / 2.;
-			FTVD.Qmatrix[0][1][i] = -0.5 / Amed - gaAmed2 * Vmed;
+			FTVD.Qmatrix[0][0][i] = (VmedOverAmed + gaAmed2 * Vmed2) / 2.;
+			FTVD.Qmatrix[0][1][i] = -halfOverAmed - gaAmed2 * Vmed;
 			FTVD.Qmatrix[0][2][i] = gaAmed2;
 
 			FTVD.Qmatrix[1][0][i] = 1. - gaAmed2 * Vmed2;
@@ -5202,8 +5138,8 @@ void TTubo::CalculaMatrizJacobiana() {
 			 conserved-variable jump -- negligible in smooth flow but large at area changes, the
 			 root of the variable-area self-excitation (Face 2) and, with friction removed, the
 			 Face-1 crash. Verified numerically: this restores P*Q = I to machine precision. */
-			FTVD.Qmatrix[2][0][i] = (gaAmed2 * Vmed2 - Vmed / Amed) / 2.;
-			FTVD.Qmatrix[2][1][i] = 0.5 / Amed - gaAmed2 * Vmed;
+			FTVD.Qmatrix[2][0][i] = (gaAmed2 * Vmed2 - VmedOverAmed) / 2.;
+			FTVD.Qmatrix[2][1][i] = halfOverAmed - gaAmed2 * Vmed;
 			FTVD.Qmatrix[2][2][i] = gaAmed2;
 
 			// Valores propios de la matriz jacobiana
@@ -5216,7 +5152,6 @@ void TTubo::CalculaMatrizJacobiana() {
 
 			}
 		}
-		delete[] Ymed;
 #ifdef usetry
 	} catch(exception & N) {
 		std::cout << "ERROR: TTubo::CalculaMatrizJacobiana tubo:" << FNumeroTubo << std::endl;
@@ -5285,20 +5220,28 @@ void TTubo::TVD_Limitador() {
 	try {
 #endif
 		double dtdx = FDeltaTime / FXref;
+		// SoA row stride (Npad) and equation count for flat indexing in the vectorized loops below.
+		const size_t Npad = (static_cast<size_t>(FNin) + 3u) & ~static_cast<size_t>(3u);
+		const size_t NEQ = static_cast<size_t>(FNumEcuaciones);
 
-		CalculaBmas();
+		// Bmas/Bmen/Cmas/Cmen were already built by EstabilidadMetodoCalculo -> TVD_Estabilidad
+		// (Phase 3, or the initial pass in the startup loop) on this exact state. They are pure
+		// state functions (depend on FU0/FArea/sqrtRhoA, NOT on FDeltaTime), and FU0 is unchanged
+		// between that pass and here, so recomputing them is redundant -- reuse the stored FTVD
+		// values. Corberan-Gascon (1995): the source B/C is evaluated once per step (it is not part
+		// of the CFL, eq. 21). Removes a full Bmas+Bmen pass per step, incl. up to half of all
+		// Colebrook calls. Bit-identical (verified vs baseline).
 
-		CalculaBmen();
-
-		for(int i = 0; i < FNin - 1; ++i) {
-			// Calculo de las variables en el sistema de coordenadas Q
-			for(int k = 0; k < FNumEcuaciones; k++) {
-				FTVD.LandaD[k][i] = dtdx * FTVD.Alpha[k][i];   // pure eigenvalue (CG eq. 37); no Beta
-				if(FTVD.LandaD[k][i] >= 0.) {
-					FTVD.hLandaD[k][i] = 1;
-				} else {
-					FTVD.hLandaD[k][i] = -1;
-				}
+		// Signal speeds. Row pointers hoisted (+ __restrict) so the i-loop is a plain unit-stride
+		// array op the auto-vectorizer accepts -- the double** views alone defeat it. Bit-identical.
+		for(int k = 0; k < FNumEcuaciones; k++) {
+			double *__restrict Lk = FTVD.LandaD[k];
+			int *__restrict Hk = FTVD.hLandaD[k];
+			const double *__restrict Ak = FTVD.Alpha[k];
+#pragma loop(ivdep)
+			for(int i = 0; i < FNin - 1; ++i) {
+				Lk[i] = dtdx * Ak[i];   // pure eigenvalue (CG eq. 37); no Beta
+				Hk[i] = (Lk[i] >= 0.) ? 1 : -1;
 			}
 		}
 		for(int i = 1; i < FNin - 2; ++i) {
@@ -5351,46 +5294,88 @@ void TTubo::TVD_Limitador() {
 			}
 		}
 
-		for(int i = 0; i < FNin - 1; ++i) {
+		// Central flux + limited dissipation (reversible area source B only; C added below). Flat
+		// (double*) + __restrict indexing so MSVC can prove unit-stride and vectorize -- the
+		// double**/double*** views defeat the auto-vectorizer even with contiguous (Stage-1) data.
+		// Layout: X[k][i] == Xbase[k*Npad+i]; Pmatrix[k][j][i] == Pbase[(k*NEQ+j)*Npad+i]. Bit-identical.
+		{
+			const double *__restrict Wb  = FTVD.W[0];
+			const double *__restrict Bma = FTVD.Bmas[0];
+			const double *__restrict Bme = FTVD.Bmen[0];
+			const double *__restrict Pm  = FTVD.Pmatrix[0][0];
+			const double *__restrict Ph0 = FTVD.Phi[0];
+			const double *__restrict Ph1 = FTVD.Phi[0] + Npad;
+			const double *__restrict Ph2 = FTVD.Phi[0] + 2 * Npad;
+			const double *__restrict DW0 = FTVD.DeltaW[0];
+			const double *__restrict DW1 = FTVD.DeltaW[0] + Npad;
+			const double *__restrict DW2 = FTVD.DeltaW[0] + 2 * Npad;
 			for(int k = 0; k < 3; ++k) {
-				// Central flux + limited dissipation carry ONLY the reversible area source B
-				// (Bmas/Bmen are area-only after the B/C split; DeltaW likewise). The irreversible
-				// C is added separately below and never limited.
-				FTVD.gflux[k][i] = 0.5 * (FTVD.W[k][i] + FTVD.W[k][i + 1] - FTVD.Bmas[k][i] + FTVD.Bmen[k][i + 1] -
-										  (FTVD.Pmatrix[k][0][i] * FTVD.Phi[0][i] * FTVD.DeltaW[0][i] + FTVD.Pmatrix[k][1][i] * FTVD.Phi[1][i] * FTVD.DeltaW[1][i]
-										   + FTVD.Pmatrix[k][2][i] * FTVD.Phi[2][i] * FTVD.DeltaW[2][i]));
+				double *__restrict gfk = FTVD.gflux[0] + k * Npad;
+				const double *__restrict Wk  = Wb  + k * Npad;
+				const double *__restrict Bmk = Bma + k * Npad;
+				const double *__restrict Bnk = Bme + k * Npad;
+				const double *__restrict Pk0 = Pm + (k * NEQ + 0) * Npad;
+				const double *__restrict Pk1 = Pm + (k * NEQ + 1) * Npad;
+				const double *__restrict Pk2 = Pm + (k * NEQ + 2) * Npad;
+#pragma loop(ivdep)
+				for(int i = 0; i < FNin - 1; ++i) {
+					gfk[i] = 0.5 * (Wk[i] + Wk[i + 1] - Bmk[i] + Bnk[i + 1]
+									- (Pk0[i] * Ph0[i] * DW0[i] + Pk1[i] * Ph1[i] * DW1[i] + Pk2[i] * Ph2[i] * DW2[i]));
+				}
 			}
-			/* Corberan & Gascon (1995) eq. 18: characteristic redistribution of the irreversible
-			 source C (friction + heat), + Dt*(R Lambda L)C at the face i+1/2, with C_{i+1/2} the
-			 source of the two half-cells straddling the face = Cmas[i] + Cmen[i+1]. R Lambda L = J
-			 (the Roe Jacobian), so C is carried along characteristics at the PURE eigenvalues Alpha
-			 -- never through the flux limiter (Phi/h are not used here). OpenWAM's C carries the
-			 opposite sign to the paper's (its direct source is applied with a minus, below), so the
-			 paper's +Dt(RLL)C maps to -0.5*dtdx*(J*Cface) in this gflux. Vanishes with C (e.g. at
-			 rest: friction ~ u^2 = 0, adiabatic q = 0). */
-			double Cface[3], LCf[3];
-			for(int n = 0; n < 3; ++n)
-				Cface[n] = FTVD.Cmas[n][i] + FTVD.Cmen[n][i + 1];
-			for(int m = 0; m < 3; ++m)
-				LCf[m] = FTVD.Qmatrix[m][0][i] * Cface[0] + FTVD.Qmatrix[m][1][i] * Cface[1] + FTVD.Qmatrix[m][2][i] * Cface[2];
-			for(int k = 0; k < 3; ++k)
-				FTVD.gflux[k][i] -= 0.5 * dtdx * (FTVD.Pmatrix[k][0][i] * FTVD.Alpha[0][i] * LCf[0]
-												  + FTVD.Pmatrix[k][1][i] * FTVD.Alpha[1][i] * LCf[1]
-												  + FTVD.Pmatrix[k][2][i] * FTVD.Alpha[2][i] * LCf[2]);
+		}
+		/* Corberan & Gascon (1995) eq. 18: characteristic redistribution of the irreversible source
+		 C (friction + heat), + Dt*(R Lambda L)C at the face i+1/2, with C_{i+1/2} the source of the
+		 two half-cells straddling the face = Cmas[i] + Cmen[i+1]. R Lambda L = J (the Roe Jacobian),
+		 so C is carried along characteristics at the PURE eigenvalues Alpha -- never through the flux
+		 limiter (Phi/h are not used here). OpenWAM's C carries the opposite sign to the paper's (its
+		 direct source is applied with a minus, below), so the paper's +Dt(RLL)C maps to
+		 -0.5*dtdx*(J*Cface) here. Vanishes with C (at rest: friction ~ u^2 = 0, adiabatic q = 0).
+		 Per-face Cface/LCf kept as loop-local scalars so the i-loop still vectorizes. */
+		{
+			double *__restrict gf = FTVD.gflux[0];
+			const double *__restrict cma = FTVD.Cmas[0];
+			const double *__restrict cme = FTVD.Cmen[0];
+			const double *__restrict Qm = FTVD.Qmatrix[0][0];
+			const double *__restrict Pm = FTVD.Pmatrix[0][0];
+			const double *__restrict Ab = FTVD.Alpha[0];
+			const size_t N1 = Npad, N2 = 2 * Npad;                // column offset j*Npad
+			const size_t mr1 = NEQ * Npad, mr2 = 2 * NEQ * Npad;  // matrix row offset m*NEQ*Npad
+#pragma loop(ivdep)
+			for(int i = 0; i < FNin - 1; ++i) {
+				const double Cf0 = cma[i] + cme[i + 1];
+				const double Cf1 = cma[N1 + i] + cme[N1 + i + 1];
+				const double Cf2 = cma[N2 + i] + cme[N2 + i + 1];
+				const double LCf0 = Qm[i] * Cf0 + Qm[N1 + i] * Cf1 + Qm[N2 + i] * Cf2;
+				const double LCf1 = Qm[mr1 + i] * Cf0 + Qm[mr1 + N1 + i] * Cf1 + Qm[mr1 + N2 + i] * Cf2;
+				const double LCf2 = Qm[mr2 + i] * Cf0 + Qm[mr2 + N1 + i] * Cf1 + Qm[mr2 + N2 + i] * Cf2;
+				gf[i]      -= 0.5 * dtdx * (Pm[i] * Ab[i] * LCf0 + Pm[N1 + i] * Ab[N1 + i] * LCf1 + Pm[N2 + i] * Ab[N2 + i] * LCf2);
+				gf[N1 + i] -= 0.5 * dtdx * (Pm[mr1 + i] * Ab[i] * LCf0 + Pm[mr1 + N1 + i] * Ab[N1 + i] * LCf1 + Pm[mr1 + N2 + i] * Ab[N2 + i] * LCf2);
+				gf[N2 + i] -= 0.5 * dtdx * (Pm[mr2 + i] * Ab[i] * LCf0 + Pm[mr2 + N1 + i] * Ab[N1 + i] * LCf1 + Pm[mr2 + N2 + i] * Ab[N2 + i] * LCf2);
+			}
+		}
+		// Species (k>=3): passively advected; kept scalar (usually FNumEcuaciones==3 => never runs).
+		for(int i = 0; i < FNin - 1; ++i) {
 			for(int k = 3; k < FNumEcuaciones; k++) {
 				FTVD.gflux[k][i] = 0.5 * (FTVD.W[k][i] + FTVD.W[k][i + 1] - (double) FTVD.hLandaD[k][i] *
 										  (FTVD.W[k][i + 1] - FTVD.W[k][i])) + 0.5 * Limita(FTVD.R[k][i]) * ((double) FTVD.hLandaD[k][i] - FTVD.LandaD[k][i]) *
 								   (FTVD.W[k][i + 1] - FTVD.W[k][i]);
 			}
-
 		}
-		for(int i = 1; i < FNin - 1; ++i) {
-			for(int k = 0; k < FNumEcuaciones; k++) {
-				// Direct cell source (CG eq. 17): area B (Bmen+Bmas, for the reorganised area
-				// well-balancing) plus the irreversible C = Dt*C_i (Cmen+Cmas). The B+C sum equals
-				// the pre-split total, so area behaviour is unchanged; only C's flux path moved.
-				FU1[k][i] = FU0[k][i] - dtdx * ((FTVD.gflux[k][i] - FTVD.gflux[k][i - 1])
-												+ (FTVD.Bmen[k][i] + FTVD.Bmas[k][i] + FTVD.Cmen[k][i] + FTVD.Cmas[k][i]));
+		// Conservative update (CG eq. 17): flux difference + direct cell source (area B = Bmen+Bmas
+		// plus the irreversible C = Cmen+Cmas). The B+C sum equals the pre-split total so area
+		// behaviour is unchanged. Row pointers hoisted (+ __restrict) => unit-stride, vectorizable.
+		for(int k = 0; k < FNumEcuaciones; k++) {
+			double *__restrict fu1k = FU1[k];
+			const double *__restrict fu0k = FU0[k];
+			const double *__restrict gfk = FTVD.gflux[k];
+			const double *__restrict bmk = FTVD.Bmas[k];
+			const double *__restrict bnk = FTVD.Bmen[k];
+			const double *__restrict cmk = FTVD.Cmas[k];
+			const double *__restrict cnk = FTVD.Cmen[k];
+#pragma loop(ivdep)
+			for(int i = 1; i < FNin - 1; ++i) {
+				fu1k[i] = fu0k[i] - dtdx * ((gfk[i] - gfk[i - 1]) + (bnk[i] + bmk[i] + cnk[i] + cmk[i]));
 			}
 		}
 #ifdef usetry
@@ -5493,53 +5478,39 @@ void TTubo::DimensionaTVD() {
 	try {
 #endif
 
-		FTVD.Bmas = new double*[FNumEcuaciones];
-		FTVD.Bvector = new double*[FNumEcuaciones];
-		FTVD.Bmen = new double*[FNumEcuaciones];
-		FTVD.Cmas = new double*[FNumEcuaciones];
-		FTVD.Cmen = new double*[FNumEcuaciones];
-		FTVD.gflux = new double*[FNumEcuaciones];
-		FTVD.Alpha = new double*[FNumEcuaciones];
-		FTVD.Beta = new double*[FNumEcuaciones];
-		FTVD.DeltaU = new double*[FNumEcuaciones];
-		FTVD.DeltaB = new double*[FNumEcuaciones];
-		FTVD.DeltaW = new double*[FNumEcuaciones];
-		FTVD.hLandaD = new int*[FNumEcuaciones];
-		FTVD.LandaD = new double*[FNumEcuaciones];
-		FTVD.Phi = new double*[FNumEcuaciones];
-		FTVD.R = new double*[FNumEcuaciones];
-		FTVD.W = new double*[FNumEcuaciones];
-		FTVD.Qmatrix = new double**[FNumEcuaciones];
+		// SoA (Stage 1): one 32-byte-aligned contiguous block per field (rows contiguous; base
+		// recoverable as view[0]), replacing ~20 scattered per-row allocations => better locality and
+		// AVX-alignable, with access syntax (X[k][i], Pmatrix[k][j][i]) unchanged. Npad rounds FNin up
+		// to a multiple of 4. Bvector/Beta/DeltaU/DeltaB (dead) stay NULL (constructor).
+		const size_t Npad = (static_cast<size_t>(FNin) + 3u) & ~static_cast<size_t>(3u);
+
+		FTVD.Bmas    = AllocAlignedRows(FNumEcuaciones, Npad);
+		FTVD.Bmen    = AllocAlignedRows(FNumEcuaciones, Npad);
+		FTVD.Cmas    = AllocAlignedRows(FNumEcuaciones, Npad);
+		FTVD.Cmen    = AllocAlignedRows(FNumEcuaciones, Npad);
+		FTVD.gflux   = AllocAlignedRows(FNumEcuaciones, Npad);
+		FTVD.Alpha   = AllocAlignedRows(FNumEcuaciones, Npad);
+		FTVD.DeltaW  = AllocAlignedRows(FNumEcuaciones, Npad);
+		FTVD.LandaD  = AllocAlignedRows(FNumEcuaciones, Npad);
+		FTVD.Phi     = AllocAlignedRows(FNumEcuaciones, Npad);
+		FTVD.R       = AllocAlignedRows(FNumEcuaciones, Npad);
+		FTVD.W       = AllocAlignedRows(FNumEcuaciones, Npad);
+		FTVD.hLandaD = AllocAlignedRowsInt(FNumEcuaciones, Npad);
+
+		sqrtRhoA = static_cast<double *>(_aligned_malloc(Npad * sizeof(double), 32));
+
+		// 3-D right/left eigenvector matrices: one contiguous block each, views [k][j] = base +
+		// (k*FNumEcuaciones + j)*Npad. Base recoverable as Pmatrix[0][0] / Qmatrix[0][0].
+		double *Pbase = static_cast<double *>(_aligned_malloc(static_cast<size_t>(FNumEcuaciones) * FNumEcuaciones * Npad * sizeof(double), 32));
+		double *Qbase = static_cast<double *>(_aligned_malloc(static_cast<size_t>(FNumEcuaciones) * FNumEcuaciones * Npad * sizeof(double), 32));
 		FTVD.Pmatrix = new double**[FNumEcuaciones];
-
-		sqrtRhoA = new double[FNin];
-
+		FTVD.Qmatrix = new double**[FNumEcuaciones];
 		for(int k = 0; k < FNumEcuaciones; ++k) {
-			FTVD.Bmas[k] = new double[FNin];
-			FTVD.Bvector[k] = new double[FNin];
-			FTVD.Bmen[k] = new double[FNin];
-			FTVD.Cmas[k] = new double[FNin];
-			FTVD.Cmen[k] = new double[FNin];
-			FTVD.gflux[k] = new double[FNin];
-			FTVD.Alpha[k] = new double[FNin];
-			FTVD.Beta[k] = new double[FNin];
-			FTVD.DeltaU[k] = new double[FNin];
-			FTVD.DeltaB[k] = new double[FNin];
-			FTVD.DeltaW[k] = new double[FNin];
-			FTVD.hLandaD[k] = new int[FNin];
-			FTVD.LandaD[k] = new double[FNin];
-			FTVD.Phi[k] = new double[FNin];
-			FTVD.R[k] = new double[FNin];
-			FTVD.W[k] = new double[FNin];
-		}
-
-		for(int k = 0; k < FNumEcuaciones; ++k) {
-			FTVD.Qmatrix[k] = new double*[FNumEcuaciones];
 			FTVD.Pmatrix[k] = new double*[FNumEcuaciones];
-
-			for(int i = 0; i < FNumEcuaciones; i++) {
-				FTVD.Qmatrix[k][i] = new double[FNin];
-				FTVD.Pmatrix[k][i] = new double[FNin];
+			FTVD.Qmatrix[k] = new double*[FNumEcuaciones];
+			for(int j = 0; j < FNumEcuaciones; ++j) {
+				FTVD.Pmatrix[k][j] = Pbase + (static_cast<size_t>(k) * FNumEcuaciones + j) * Npad;
+				FTVD.Qmatrix[k][j] = Qbase + (static_cast<size_t>(k) * FNumEcuaciones + j) * Npad;
 			}
 		}
 		for(int i = 0; i < FNin; i++) {

@@ -2,4 +2,5 @@
 build
 build-release
 build-parallel
+build-parallel-debug
 .clangd

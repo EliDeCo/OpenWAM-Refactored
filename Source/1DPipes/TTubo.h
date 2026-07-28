@@ -221,6 +221,9 @@ class TTubo {
 	double **FW;					//!< Flux vector
 	double **FV1;	//!< Source vector (related with cross section variation)
 	double **FV2;	//!< Source vector (related with friction and heat transfer)
+	//! LaxWendroff half-node scratch, allocated once (lazily) and reused, instead of a
+	//! per-step new[]/delete[] of seven arrays inside LaxWendroff()/LaxWendroffArea().
+	double *FLWhi12, *FLWrho12, *FLWRe12, *FLWTPTubo12, *FLWGamma12, *FLWRmezcla12, *FLWGamma1_12;
 	double FCcese;					//!< CE-SE constant
 
 	// Vectores del flux corrected transport
@@ -536,9 +539,6 @@ class TTubo {
 								double entropia,		//!< Comment
 								double DeltaTiempo		//!< Comment
 							   );
-
-	/*! Comment */
-	void CalculaB();
 
 	/*! Comment */
 	void CalculaBmen();
