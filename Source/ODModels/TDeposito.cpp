@@ -193,8 +193,9 @@ void TDeposito::LeeDatosGeneralesDepositos(const char *FileWAM, fpos_t &filepos)
 
 			} else if(FCalculoEspecies == nmCalculoSimple) {
 
-				FRMezcla = CalculoSimpleRMezcla(FFraccionMasicaEspecie[0], FFraccionMasicaEspecie[1], FCalculoGamma, nmMEP);
-				FCvMezcla = CalculoSimpleCvMezcla(__units::degCToK(FTemperature), FFraccionMasicaEspecie[0], FFraccionMasicaEspecie[1],
+				// 2nd fraction arg is FUEL (0 in the simple model), not the air filler frac[1] (see TDepVolVariable).
+				FRMezcla = CalculoSimpleRMezcla(FFraccionMasicaEspecie[0], 0., FCalculoGamma, nmMEP);
+				FCvMezcla = CalculoSimpleCvMezcla(__units::degCToK(FTemperature), FFraccionMasicaEspecie[0], 0.,
 												  FCalculoGamma, nmMEP);
 				FGamma = CalculoSimpleGamma(FRMezcla, FCvMezcla, FCalculoGamma);
 
@@ -217,8 +218,9 @@ void TDeposito::LeeDatosGeneralesDepositos(const char *FileWAM, fpos_t &filepos)
 
 			} else if(FCalculoEspecies == nmCalculoSimple) {
 
-				FRMezcla = CalculoSimpleRMezcla(FFraccionMasicaEspecie[0], FFraccionMasicaEspecie[1], FCalculoGamma, nmMEP);
-				FCvMezcla = CalculoSimpleCvMezcla(__units::degCToK(FTemperature), FFraccionMasicaEspecie[0], FFraccionMasicaEspecie[1],
+				// 2nd fraction arg is FUEL (0 in the simple model), not the air filler frac[1] (see TDepVolVariable).
+				FRMezcla = CalculoSimpleRMezcla(FFraccionMasicaEspecie[0], 0., FCalculoGamma, nmMEP);
+				FCvMezcla = CalculoSimpleCvMezcla(__units::degCToK(FTemperature), FFraccionMasicaEspecie[0], 0.,
 												  FCalculoGamma, nmMEP);
 				FGamma = CalculoSimpleGamma(FRMezcla, FCvMezcla, FCalculoGamma);
 

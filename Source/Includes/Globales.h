@@ -1610,6 +1610,12 @@ inline double CalculoSimpleGamma(double RMezcla, double CvMezcla, nmCalculoGamma
  */
 inline double CalculoSimpleCvMezcla(double Temperature, double YQuemados, double YCombustible,
 									nmCalculoGamma GammaCalculation, nmTipoCombustion TipoCombustible) {
+	// Guard the property correlations to their valid domain: the f(Y,T) Cv fits
+	// contain sqrt(T) and go negative below ~80 K, so a transient temperature
+	// excursion (e.g. a plenum over-cooling) would give sqrt(negative)=NaN or a
+	// negative Cv -> nonsensical gamma -> runaway. Clamp to a physical floor.
+	if(Temperature < 150.)
+		Temperature = 150.;
 	if(TipoCombustible == 0) {
 		TipoCombustible == nmMEC;
 	}
@@ -1674,6 +1680,9 @@ inline double CalculoCompletoGamma(double RMezcla, double CpMezcla, nmCalculoGam
 
 inline double CalculoCompletoCpMezcla(double YO2, double YCO2, double YH2O, double YCombustible, double Temperature,
 									  nmCalculoGamma GammaCalculation, nmTipoCombustion TipoCombustible) {
+	// Guard the property correlations to their valid domain (see CalculoSimpleCvMezcla).
+	if(Temperature < 150.)
+		Temperature = 150.;
 	double YN2 = 1 - YO2 - YCO2 - YH2O;
 	double CpMezcla = 1004.5;
 	if(TipoCombustible == 0) {

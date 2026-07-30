@@ -131,8 +131,9 @@ void TVenturi::ActualizaPropiedades(double TimeCalculo) {
 
 		} else if(FCalculoEspecies == nmCalculoSimple) {
 
-			FRMezcla = CalculoSimpleRMezcla(FFraccionMasicaEspecie[0], FFraccionMasicaEspecie[1], FCalculoGamma, nmMEP);
-			FCvMezcla = CalculoSimpleCvMezcla(__units::degCToK(FTemperature), FFraccionMasicaEspecie[0], FFraccionMasicaEspecie[1],
+			// 2nd fraction arg is FUEL (0), not the air filler frac[1] (see TDepVolVariable bug fix).
+			FRMezcla = CalculoSimpleRMezcla(FFraccionMasicaEspecie[0], 0., FCalculoGamma, nmMEP);
+			FCvMezcla = CalculoSimpleCvMezcla(__units::degCToK(FTemperature), FFraccionMasicaEspecie[0], 0.,
 											  FCalculoGamma, nmMEP);
 			FGamma = CalculoSimpleGamma(FRMezcla, FCvMezcla, FCalculoGamma);
 

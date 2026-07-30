@@ -81,8 +81,10 @@ void TDepVolCte::ActualizaPropiedades(double TimeCalculo) {
 
 		} else if(FCalculoEspecies == nmCalculoSimple) {
 
-			FRMezcla = CalculoSimpleRMezcla(FFraccionMasicaEspecie[0], FFraccionMasicaEspecie[1], FCalculoGamma, nmMEP);
-			FCvMezcla = CalculoSimpleCvMezcla(__units::degCToK(FTemperature), FFraccionMasicaEspecie[0], FFraccionMasicaEspecie[1],
+			// 2nd fraction arg is the FUEL fraction (0 in the simple model), NOT
+			// FFraccionMasicaEspecie[1] which is the fresh-air filler (see TDepVolVariable).
+			FRMezcla = CalculoSimpleRMezcla(FFraccionMasicaEspecie[0], 0., FCalculoGamma, nmMEP);
+			FCvMezcla = CalculoSimpleCvMezcla(__units::degCToK(FTemperature), FFraccionMasicaEspecie[0], 0.,
 											  FCalculoGamma, nmMEP);
 			FGamma = CalculoSimpleGamma(FRMezcla, FCvMezcla, FCalculoGamma);
 
