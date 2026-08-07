@@ -1152,8 +1152,15 @@ void TTubo::IniciaVariablesFundamentalesTubo() {
 
 		} else if(FCalculoEspecies == nmCalculoSimple) {
 
-			RMezclaIni = CalculoSimpleRMezcla(FComposicionInicial[0], FComposicionInicial[1], FCalculoGamma, nmMEP);
-			CvMezclaIni = CalculoSimpleCvMezcla(__units::degCToK(FTini), FComposicionInicial[0], FComposicionInicial[1],
+			// 2nd fraction arg is the FUEL fraction (0 in the simple model), NOT
+			// FComposicionInicial[1] which is the fresh-air filler (species N-2). Passing the
+			// air filler as fuel here initialized every fresh-air pipe as 100% gasoline vapor
+			// (R=72.4, gamma=1.04, a=163 m/s instead of air's R=287, gamma=1.4, a=376 m/s),
+			// which collided with the correct-air characteristics at boundaries (e.g. the
+			// compressor discharge) and blew up. Mirrors the runtime call in
+			// ActualizaPropiedadesGas and the compressor/deposit fixes (see species-index note).
+			RMezclaIni = CalculoSimpleRMezcla(FComposicionInicial[0], 0., FCalculoGamma, nmMEP);
+			CvMezclaIni = CalculoSimpleCvMezcla(__units::degCToK(FTini), FComposicionInicial[0], 0.,
 												FCalculoGamma, nmMEP);
 			GammaIni = CalculoSimpleGamma(RMezclaIni, CvMezclaIni, FCalculoGamma);
 

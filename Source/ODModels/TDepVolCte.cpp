@@ -100,6 +100,8 @@ void TDepVolCte::ActualizaPropiedades(double TimeCalculo) {
 		double Heat = 0.;
 		double MTemp = FGamma / (pow2(FAsonido * __cons::ARef) * FMasa0);
 
+		int iterCount = 0;
+		const int MAX_ITER = 10000;
 		while(!Converge) {
 			H = 0.;
 			for(int i = 0; i < FNumeroUniones; i++) {
@@ -198,6 +200,16 @@ void TDepVolCte::ActualizaPropiedades(double TimeCalculo) {
 			} else {
 				Converge = true;
 				FAsonido = Asonido1;
+			}
+			if(++iterCount >= MAX_ITER) {
+				printf("ERROR: TDepVolCte deposit %d: the 0-D energy-balance iteration did NOT converge in %d "
+					   "iterations (relative error = %e). This almost always means the deposit volume "
+					   "(%e m^3) is too small for the mass flow passing through it: the fixed-point energy "
+					   "balance becomes stiff and diverges. Increase this deposit's volume.\n",
+					   FNumeroDeposito, MAX_ITER, Error, FVolumen);
+				fflush(stdout);
+				throw Exception("TDepVolCte::ActualizaPropiedades: 0-D energy-balance iteration did not converge "
+								"(deposit volume likely too small for its through-flow)");
 			}
 		}
 		double A2 = pow2(__cons::ARef * FAsonido);
