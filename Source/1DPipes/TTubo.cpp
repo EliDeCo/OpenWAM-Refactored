@@ -203,6 +203,9 @@ TTubo::TTubo(int SpeciesNumber, int j, double SimulationDuration, TBloqueMotor *
 	Fhe = NULL;
 	Frho = NULL;
 	FRe = NULL;
+	FRoeQ = NULL;
+	FRoeRes = NULL;
+	FRoeF = NULL;
 	FLWhi12 = NULL;
 	FLWrho12 = NULL;
 	FLWRe12 = NULL;
@@ -570,6 +573,20 @@ TTubo::~TTubo() {
 		delete[] FLWRmezcla12;
 	if(FLWGamma1_12 != NULL)
 		delete[] FLWGamma1_12;
+
+	// RoeM1 + RK3 scratch (GJM+RoeM upgrade).
+	if(FRoeQ != NULL) {
+		for(int k = 0; k < FNumEcuaciones; k++)
+			delete[] FRoeQ[k];
+		delete[] FRoeQ;
+	}
+	if(FRoeRes != NULL) {
+		for(int k = 0; k < FNumEcuaciones; k++)
+			delete[] FRoeRes[k];
+		delete[] FRoeRes;
+	}
+	if(FRoeF != NULL)
+		delete[] FRoeF;
 
 }
 
@@ -1595,7 +1612,10 @@ void TTubo::EstabilidadMetodoCalculo() {
 		FDeltaTime = FCourant * FXref / VTotalMax;
 
 		if(FMod.Modelo == nmTVD) {
-			TVD_Estabilidad();
+#ifdef OPENWAM_LEGACY_TVD
+			TVD_Estabilidad();   // legacy TVD rebuilds the Roe-Jacobian stability + dt here
+#endif
+			// RoeM uses the base dt = FCourant*FXref/(|u|+a) computed above; TVD-RK3 is stable for CFL <= 1.
 		}
 
 		FTime0 = FTime1;
@@ -1624,7 +1644,11 @@ void TTubo::CalculaVariablesFundamentales() {
 				FluxCorrectedTransport();
 			}
 		} else if(FMod.Modelo == nmTVD) {
+#ifdef OPENWAM_LEGACY_TVD
 			TVD_Limitador();
+#else
+			RoeM_RK3();   // GJM+RoeM upgrade: RoeM1 + TVD-RK3 replaces the legacy TVD/entropy-fix scheme
+#endif
 		} else {
 			std::cout << "ERROR: Metodo de calculo no implementado" << std::endl;
 			throw Exception("");
@@ -1962,6 +1986,214 @@ void TTubo::LaxWendroffArea() {
 }
 
 // ---------------------------------------------------------------------------
+// RoeM1 + 3rd-order TVD Runge-Kutta interior scheme (GJM+RoeM solver upgrade).
+// RoeM1 flux: Kim, Kim, Rho & Hong, J.Comput.Phys 185 (2003) Eq.34; quasi-1D form and
+// TVD-RK3 pairing: Hong & Kim, Int.J.Numer.Meth.Fluids 65 (2011) Eq.40 / Eq.42.
+// Works in dimensional SI (rho[kg/m3], u[m/s], p[Pa]); conserved FU = [rho*A, rho*u*A,
+// rho*e_t*A, (rho*Y*A)...]. Well-balanced geometric (pA) source + friction/heat source
+// (Phase 2) are matched term-for-term to the LaxWendroffArea discretisation so the at-rest
+// cone cancels to machine precision; single gas (variable-gamma species advection in Phase 3).
+// ---------------------------------------------------------------------------
+
+void TTubo::RoeMFlux(const double* WL, const double* WR, double GammaL, double GammaR, double* F) {
+	// Variable-gamma: each side's total enthalpy uses its OWN gamma; the interface (gamma-1) is the
+	// Roe-weighted (sqrt-rho) average, matching the CalculaBmen convention gamma_hat=(Rm*gR+gL)/(Rm+1).
+	const double G1L = GammaL - 1.0, G1R = GammaR - 1.0;
+	const double rL = WL[0], uL = WL[1], pL = WL[2];
+	const double rR = WR[0], uR = WR[1], pR = WR[2];
+	const double HL = GammaL * pL / (G1L * rL) + 0.5 * uL * uL;   // total enthalpy
+	const double HR = GammaR * pR / (G1R * rR) + 0.5 * uR * uR;
+
+	// Physical Euler fluxes [rho u, rho u^2 + p, rho u H]
+	const double FL[3] = { rL * uL, rL * uL * uL + pL, rL * uL * HL };
+	const double FR[3] = { rR * uR, rR * uR * uR + pR, rR * uR * HR };
+
+	// Roe averages
+	const double srL = sqrt(rL), srR = sqrt(rR), sden = srL + srR;
+	const double rhat = srL * srR;
+	const double uhat = (srL * uL + srR * uR) / sden;
+	const double Hhat = (srL * HL + srR * HR) / sden;
+	const double G1 = (srL * G1L + srR * G1R) / sden;          // Roe-weighted (gamma_hat - 1)
+	const double ahat = sqrt(G1 * (Hhat - 0.5 * uhat * uhat));
+	const double Mhat = uhat / ahat;
+
+	// HLLE-type wave speeds with common ahat (RoeM Eq.33/34c -> exact contact & positivity)
+	const double b1 = fmax(0.0, fmax(uhat + ahat, uR + ahat));
+	const double b2 = fmin(0.0, fmin(uhat - ahat, uL - ahat));
+
+	// Mach function f_c (RoeM Eq.17b; h from Eq.17c): 1 at stagnation, |Mhat|^h otherwise.
+	const double prat = fmin(pL / pR, pR / pL);
+	const double hexp = 1.0 - prat;
+	const double fc = (fabs(uhat) < 1.0e-30) ? 1.0 : pow(fabs(Mhat), hexp);
+
+	// Enthalpy-consistent state differences DeltaQ* = D[rho, rho*u, rho*H] (RoeM Eq.34b)
+	const double dQ[3] = { rR - rL, rR * uR - rL * uL, rR * HR - rL * HL };
+	// BdeltaQ (RoeM Eq.34b, 1-D: normal is the only velocity, so the rho_hat momentum row vanishes)
+	const double dp = pR - pL;
+	const double dH = HR - HL;
+	const double sfac = (rR - rL) - fc * dp / (ahat * ahat);
+	const double BdQ[3] = { sfac, sfac * uhat, sfac * Hhat + rhat * dH };
+
+	const double bden = b1 - b2;
+	const double w = b1 * b2 / bden;                 // <= 0 (HLL dissipation weight)
+	const double wB = w / (1.0 + fabs(Mhat));
+	for(int k = 0; k < 3; k++)
+		F[k] = (b1 * FL[k] - b2 * FR[k]) / bden + w * dQ[k] - wB * BdQ[k];
+}
+
+// ---------------------------------------------------------------------------
+
+void TTubo::RoeMResidual(double** Q, double** R) {
+	// (1) Cell primitives {rho, u, p} in SI, plus species mass fractions Y_k (k>=3), into the free
+	//     scratch FV1 (unused by RoeM; it is the LaxWendroff area-source vector, not touched here).
+	for(int i = 0; i < FNin; i++) {
+		const double A = FArea[i];
+		const double rho = Q[0][i] / A;
+		const double u = Q[1][i] / Q[0][i];
+		const double et = Q[2][i] / A;
+		FV1[0][i] = rho;
+		FV1[1][i] = u;
+		FV1[2][i] = (FGamma[i] - 1.0) * (et - 0.5 * rho * u * u);
+		for(int k = 3; k < FNumEcuaciones; k++)
+			FV1[k][i] = Q[k][i] / Q[0][i];                       // Y_k = (rho*Y*A)/(rho*A)
+	}
+	// (1b) Friction/heat source for the current stage state into the member FV2 scratch. Skipped entirely
+	//      when both adjust factors are zero (V2 is identically 0, so it is a bit-identical no-op). The
+	//      Colebrook factor is cached (FRoeF, set once/step in RoeM_RK3) since Re is frozen across stages.
+	const bool hasV2 = !DoubEqZero(FCoefAjusFric) || !DoubEqZero(FCoefAjusTC);
+	if(hasV2)
+		CalculaFuente2Area(Q, FV2, FArea, Fhi, Frho, FRe, FTPTubo[0], FGamma, FRMezcla, FGamma1, FNin, FRoeF);
+	// (2) Primitive MUSCL reconstruction (van Leer limited slope, TVD) + RoeM flux at each interface
+	//     i+1/2 (i=0..FNin-2). First-order fallback where the 3-point stencil runs off the domain
+	//     (i==0 left state, i==FNin-2 right state) and if reconstruction violates positivity.
+	for(int i = 0; i < FNin - 1; i++) {
+		double WL[3], WR[3];
+		for(int k = 0; k < 3; k++) {
+			double sL = 0.0, sR = 0.0;
+			if(i > 0) {
+				const double dm = FV1[k][i] - FV1[k][i - 1], dp = FV1[k][i + 1] - FV1[k][i];
+				if(dm * dp > 0.0)
+					sL = 2.0 * dm * dp / (dm + dp);          // van Leer harmonic slope
+			}
+			if(i + 1 < FNin - 1) {
+				const double dm = FV1[k][i + 1] - FV1[k][i], dp = FV1[k][i + 2] - FV1[k][i + 1];
+				if(dm * dp > 0.0)
+					sR = 2.0 * dm * dp / (dm + dp);
+			}
+			WL[k] = FV1[k][i] + 0.5 * sL;
+			WR[k] = FV1[k][i + 1] - 0.5 * sR;
+		}
+		if(WL[0] <= 0.0 || WL[2] <= 0.0) {                   // positivity guard -> first order
+			WL[0] = FV1[0][i]; WL[1] = FV1[1][i]; WL[2] = FV1[2][i];
+		}
+		if(WR[0] <= 0.0 || WR[2] <= 0.0) {
+			WR[0] = FV1[0][i + 1]; WR[1] = FV1[1][i + 1]; WR[2] = FV1[2][i + 1];
+		}
+		double f[3];
+		RoeMFlux(WL, WR, FGamma[i], FGamma[i + 1], f);         // variable-gamma: each side's own gamma
+		const double Aface = FArea12[i];
+		FW[0][i] = f[0] * Aface;
+		FW[1][i] = f[1] * Aface;
+		FW[2][i] = f[2] * Aface;
+		// Species advect at the contact: reconstruct Y (van Leer MUSCL) and upwind by the mass-flux
+		// sign, so FW[k] = FW[0]*Y_upwind. Conservative (sum_k FW[k]=FW[0]), bounded, sum(Y)=1-preserving.
+		for(int k = 3; k < FNumEcuaciones; k++) {
+			double sL = 0.0, sR = 0.0;
+			if(i > 0) {
+				const double dm = FV1[k][i] - FV1[k][i - 1], dp = FV1[k][i + 1] - FV1[k][i];
+				if(dm * dp > 0.0)
+					sL = 2.0 * dm * dp / (dm + dp);
+			}
+			if(i + 1 < FNin - 1) {
+				const double dm = FV1[k][i + 1] - FV1[k][i], dp = FV1[k][i + 2] - FV1[k][i + 1];
+				if(dm * dp > 0.0)
+					sR = 2.0 * dm * dp / (dm + dp);
+			}
+			const double YLk = FV1[k][i] + 0.5 * sL;
+			const double YRk = FV1[k][i + 1] - 0.5 * sR;
+			FW[k][i] = FW[0][i] * ((FW[0][i] >= 0.0) ? YLk : YRk);
+		}
+	}
+	// (3) Residual = flux divergence + friction/heat source + well-balanced geometric source.
+	//     The geometric momentum source uses V1[1] = -p (cell primitive p in FV1[2]) and the cell-i
+	//     face-area derivative FDerLinArea12 = (FArea12[i]-FArea12[i-1])/dx, identical to the x3 term
+	//     of LaxWendroffArea, so at rest (uniform p, u=0) the pA flux difference cancels to machine
+	//     precision. Friction/heat (FV2) feeds momentum (k=1) and energy (k=2); FV2[0]=0 (mass).
+	const double invdx = 1.0 / FXref;
+	for(int i = 1; i < FNin - 1; i++) {
+		for(int k = 0; k < FNumEcuaciones; k++)    // species (k>=3): FV2=0, so pure flux divergence
+			R[k][i] = (FW[k][i] - FW[k][i - 1]) * invdx + (hasV2 ? 0.5 * (FV2[k][i] + FV2[k][i - 1]) : 0.0);
+		R[1][i] += -0.5 * (FV1[2][i] + FV1[2][i - 1]) * FDerLinArea12[i];
+	}
+}
+
+// ---------------------------------------------------------------------------
+
+void TTubo::RoeM_RK3() {
+#ifdef usetry
+	try {
+#endif
+		if(FRoeQ == NULL) {
+			FRoeQ = new double*[FNumEcuaciones];
+			FRoeRes = new double*[FNumEcuaciones];
+			FRoeF = new double[FNin];
+			for(int k = 0; k < FNumEcuaciones; k++) {
+				FRoeQ[k] = new double[FNin];
+				FRoeRes[k] = new double[FNin];
+			}
+		}
+		// Cache the Colebrook friction factor once per step: Re[i] and the diameter are frozen across the
+		// three RK3 stages, so f is stage-invariant. Reused by CalculaFuente2Area in every stage -> the
+		// Colebrook root-find runs 1x/step instead of 3x, bit-identically. (Only needed when friction is on.)
+		if(!DoubEqZero(FCoefAjusFric)) {
+			for(int i = 0; i < FNin; i++) {
+				double diame = sqrt(FArea[i] * __cons::_4_Pi), f;
+				Colebrook(FFriccion, diame, f, FRe[i]);
+				FRoeF[i] = f;
+			}
+		}
+		const double dt = FDeltaTime;
+		const int Np = FNin;
+
+		// All equations (mass, momentum, energy, species k>=3) advance together through the RK3 stages;
+		// species get their contact-upwind flux in RoeMResidual. Boundary cells held fixed = FU0.
+		// Stage 1: Q1 = Q0 - dt R(Q0).
+		RoeMResidual(FU0, FRoeRes);
+		for(int k = 0; k < FNumEcuaciones; k++) {
+			FRoeQ[k][0] = FU0[k][0];
+			FRoeQ[k][Np - 1] = FU0[k][Np - 1];
+			for(int i = 1; i < Np - 1; i++)
+				FRoeQ[k][i] = FU0[k][i] - dt * FRoeRes[k][i];
+		}
+		// Stage 2: Q2 = 3/4 Q0 + 1/4 (Q1 - dt R(Q1))
+		RoeMResidual(FRoeQ, FRoeRes);
+		for(int k = 0; k < FNumEcuaciones; k++) {
+			FRoeQ[k][0] = FU0[k][0];
+			FRoeQ[k][Np - 1] = FU0[k][Np - 1];
+			for(int i = 1; i < Np - 1; i++)
+				FRoeQ[k][i] = 0.75 * FU0[k][i] + 0.25 * (FRoeQ[k][i] - dt * FRoeRes[k][i]);
+		}
+		// Stage 3: U^{n+1} = 1/3 Q0 + 2/3 (Q2 - dt R(Q2))
+		RoeMResidual(FRoeQ, FRoeRes);
+		for(int k = 0; k < FNumEcuaciones; k++)
+			for(int i = 1; i < Np - 1; i++)
+				FU1[k][i] = (1.0 / 3.0) * FU0[k][i] + (2.0 / 3.0) * (FRoeQ[k][i] - dt * FRoeRes[k][i]);
+
+		// Boundary cells of FU1 are (re)set by ActualizaValoresNuevos right after; seed with FU0.
+		for(int k = 0; k < FNumEcuaciones; k++) {
+			FU1[k][0] = FU0[k][0];
+			FU1[k][Np - 1] = FU0[k][Np - 1];
+		}
+#ifdef usetry
+	} catch(exception & N) {
+		std::cout << "ERROR: TTubo::RoeM_RK3 en el tubo: " << FNumeroTubo << std::endl;
+		std::cout << "Tipo de error: " << N.what() << std::endl;
+		throw Exception(N.what());
+	}
+#endif
+}
+
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
 void TTubo::CalculaFlujo(double **U, double **W, double *Gamma, double *Gamma1, int Nodos) {
@@ -2123,7 +2355,8 @@ void TTubo::CalculaFuente2(double **U, double **V2, double *diame, double *hi, d
 // ---------------------------------------------------------------------------
 
 void TTubo::CalculaFuente2Area(double **U, double **V2, double *Area, double *hi, double *rho, double *Re,
-							   double *TempParedTubo, double *Gamma, double *Rmezcla, double *Gamma1, int Nodos) {
+							   double *TempParedTubo, double *Gamma, double *Rmezcla, double *Gamma1, int Nodos,
+							   double *fCache) {
 	double v = 0., a = 0., pA = 0., tgas = 0., g = 0., q = 0., f = 0.;
 	double diame = 0.;
 #ifdef usetry
@@ -2140,7 +2373,10 @@ void TTubo::CalculaFuente2Area(double **U, double **V2, double *Area, double *hi
 			if(DoubEqZero(v) || DoubEqZero(FCoefAjusFric)) {
 				g = 0.;
 			} else {
-				Colebrook(FFriccion, diame, f, Re[i]);
+				if(fCache != NULL)
+					f = fCache[i];   // RoeM RK3: Colebrook f cached once/step (Re, diam frozen across stages)
+				else
+					Colebrook(FFriccion, diame, f, Re[i]);
 				g = f * v * v * v / fabs(v) * 2 / diame * FCoefAjusFric;
 			}
 
@@ -2407,7 +2643,9 @@ void TTubo::ActualizaValoresNuevos(TCondicionContorno **BC) {
 				FVelocidadDim[i] = FVelocidad0[i] * __cons::ARef;
 				FAsonidoDim[i] = FAsonido0[i] * __cons::ARef;
 				FFlowMass[i] = FU0[1][i];
-				if(FVelocidadDim[i] > FAsonidoDim[i] + 1.0e-10) {
+				// RoeM captures supersonic flow natively (e.g. a C-D nozzle diverging section), so this is a
+				// normal state there, not a warning; keep the notice only for the legacy/LW paths.
+				if(FVelocidadDim[i] > FAsonidoDim[i] + 1.0e-10 && FMod.Modelo != nmTVD) {
 					printf("Supersonic flow in pipe: %d node: %d, Mach = %lf\n", FNumeroTubo, i, FVelocidadDim[i] / FAsonidoDim[i]);
 				}
 
@@ -2457,6 +2695,13 @@ void TTubo::TransformaContorno(double& L, double& B, double& E, double& a, doubl
 
 void TTubo::ReduccionFlujoSubsonico() {
 	double Machx = 0., Machy = 0., Velocidady = 0., Sonidoy = 0.;
+#ifndef OPENWAM_LEGACY_TVD
+	// RoeM (Phase 5): the b1/b2 HLL wave speeds handle supersonic flow and expansion natively, so the
+	// normal-shock subsonic clip is both unnecessary and inconsistent (it would corrupt a genuine
+	// supersonic region, e.g. a C-D nozzle diverging section). Retire it on the RoeM path.
+	if(FMod.Modelo == nmTVD)
+		return;
+#endif
 #ifdef usetry
 	try {
 #endif

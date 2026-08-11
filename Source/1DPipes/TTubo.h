@@ -224,6 +224,10 @@ class TTubo {
 	//! LaxWendroff half-node scratch, allocated once (lazily) and reused, instead of a
 	//! per-step new[]/delete[] of seven arrays inside LaxWendroff()/LaxWendroffArea().
 	double *FLWhi12, *FLWrho12, *FLWRe12, *FLWTPTubo12, *FLWGamma12, *FLWRmezcla12, *FLWGamma1_12;
+	//! RoeM1 + 3rd-order TVD-RK scratch (GJM+RoeM solver upgrade), lazily allocated & reused like FLW*.
+	double **FRoeQ;					//!< RK3 working state  [FNumEcuaciones][FNin]
+	double **FRoeRes;				//!< RK3 residual R(Q)  [FNumEcuaciones][FNin]
+	double *FRoeF;					//!< Colebrook friction factor cached once/step (Re frozen across RK3 stages) [FNin]
 	double FCcese;					//!< CE-SE constant
 
 	// Vectores del flux corrected transport
@@ -413,6 +417,13 @@ class TTubo {
 	/*! Comment */
 	void LaxWendroffArea();
 
+	//! Quasi-1D RoeM1 numerical flux (Kim et al. 2003 Eq.34 / Hong & Kim 2011 Eq.40). WL,WR = {rho,u,p} in SI.
+	void RoeMFlux(const double* WL, const double* WR, double GammaL, double GammaR, double* F);
+	//! RoeM residual R = d(A*f)/dx over interior cells (constant-area for Phase 0; well-balanced source in Phase 2).
+	void RoeMResidual(double** Q, double** R);
+	//! RoeM1 interior update via 3rd-order TVD Runge-Kutta (Shu-Osher); replaces TVD_Limitador in the nmTVD slot.
+	void RoeM_RK3();
+
 	/*! Comment */
 	void FluxCorrectedTransport();
 
@@ -465,7 +476,8 @@ class TTubo {
 							double* Gamma,				//!< Comment
 							double* Rmezcla,			//!< Comment
 							double* Gamma1,				//!< Comment
-							int Nodos				//!< Comment
+							int Nodos,				//!< Comment
+							double* fCache = NULL	//!< cached Colebrook friction factor (RoeM RK3); NULL = compute via Colebrook
 						   );
 
 	/*! Comment */

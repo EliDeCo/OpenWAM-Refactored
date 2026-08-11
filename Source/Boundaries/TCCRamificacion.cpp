@@ -55,6 +55,12 @@ TCCRamificacion::TCCRamificacion(nmTypeBC TipoCC, int numCC, nmTipoCalculoEspeci
 
 	FMasaEspecie = NULL;
 
+	FUseGJM = -1;
+	FGInit = false;
+	FGRhoY = NULL;
+	FGNx = NULL;
+	FGNy = NULL;
+	FGRho = FGMx = FGMy = FGE = FGVol = 0.;
 }
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
@@ -86,6 +92,12 @@ TCCRamificacion::~TCCRamificacion() {
 	if(FMasaEspecie != NULL)
 		delete[] FMasaEspecie;
 
+	if(FGRhoY != NULL)
+		delete[] FGRhoY;
+	if(FGNx != NULL)
+		delete[] FGNx;
+	if(FGNy != NULL)
+		delete[] FGNy;
 }
 
 // ---------------------------------------------------------------------------
@@ -186,6 +198,217 @@ void TCCRamificacion::TuboCalculandose(int TuboActual) {
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
+// GJM: quasi-1D RoeM interface flux (Hong & Kim 2011, Eq 40), SI units. Returns the physical flux
+// per unit area: frho, frhoun (= rho*U^2+p momentum), frhoet. Mirrors TTubo::RoeMFlux.
+void TCCRamificacion::RoeM1DFlux(double rL, double uL, double pL, double gL, double rR, double uR, double pR,
+								 double gR, double& frho, double& frhoun, double& frhoet) {
+	const double G1L = gL - 1.0, G1R = gR - 1.0;
+	const double HL = gL * pL / (G1L * rL) + 0.5 * uL * uL;
+	const double HR = gR * pR / (G1R * rR) + 0.5 * uR * uR;
+	const double FL0 = rL * uL, FL1 = rL * uL * uL + pL, FL2 = rL * uL * HL;
+	const double FR0 = rR * uR, FR1 = rR * uR * uR + pR, FR2 = rR * uR * HR;
+	const double srL = sqrt(rL), srR = sqrt(rR), sden = srL + srR;
+	const double rhat = srL * srR;
+	const double uhat = (srL * uL + srR * uR) / sden;
+	const double Hhat = (srL * HL + srR * HR) / sden;
+	const double G1 = (srL * G1L + srR * G1R) / sden;
+	const double ahat = sqrt(G1 * (Hhat - 0.5 * uhat * uhat));
+	const double Mhat = uhat / ahat;
+	const double b1 = fmax(0.0, fmax(uhat + ahat, uR + ahat));
+	const double b2 = fmin(0.0, fmin(uhat - ahat, uL - ahat));
+	const double prat = fmin(pL / pR, pR / pL);
+	const double hexp = 1.0 - prat;
+	const double fc = (fabs(uhat) < 1.0e-30) ? 1.0 : pow(fabs(Mhat), hexp);
+	const double dQ0 = rR - rL, dQ1 = rR * uR - rL * uL, dQ2 = rR * HR - rL * HL;
+	const double dp = pR - pL, dH = HR - HL;
+	const double sfac = (rR - rL) - fc * dp / (ahat * ahat);
+	const double B0 = sfac, B1 = sfac * uhat, B2 = sfac * Hhat + rhat * dH;
+	const double bden = b1 - b2, w = b1 * b2 / bden, wB = w / (1.0 + fabs(Mhat));
+	frho = (b1 * FL0 - b2 * FR0) / bden + w * dQ0 - wB * B0;
+	frhoun = (b1 * FL1 - b2 * FR1) / bden + w * dQ1 - wB * B1;
+	frhoet = (b1 * FL2 - b2 * FR2) / bden + w * dQ2 - wB * B2;
+}
+
+// Ghost Junction Method (Hong & Kim 2011): persistent 2-D ghost cell (SI), RoeM interface flux +
+// scaling function G (Eq 35/37), equally-spaced branch normals (user ruling: OpenWAM has no angles).
+// Runs once per step and writes each branch's new (Landa,Beta,Entropia). See Notes/GJM-Implementation-Recipe.md.
+void TCCRamificacion::CalculaCondicionContornoGJM(double DeltaT) {
+	const int N = FNumeroTubosCC;
+	const int nsp = FNumeroEspecies - FIntEGR;
+	const double ARef = __cons::ARef;
+	const double TWOPI = 6.283185307179586;
+	const int MAXB = 16;
+	if(N > MAXB)
+		throw Exception("GJM: too many branches at junction");
+
+	double rho[MAXB], up[MAXB], Ubn[MAXB], pr[MAXB], aa[MAXB], gam[MAXB], Ar[MAXB];
+	int sgn[MAXB];   // +1 left end (N_i = pipe +x), -1 right end (N_i = pipe -x)
+	for(int i = 0; i < N; i++) {
+		TTubo* P = FTuboExtremo[i].Pipe;
+		int nd = FNodoFin[i];
+		rho[i] = P->GetDensidad(nd);
+		up[i] = P->GetVelocidad(nd) * ARef;                   // pipe +x velocity (SI)
+		pr[i] = __units::BarToPa(P->GetPresion(nd));
+		aa[i] = P->GetAsonido(nd) * ARef;
+		gam[i] = P->GetGamma(nd);
+		Ar[i] = FSeccionTubo[i];
+		sgn[i] = (FIndiceCC[i] == 0) ? 1 : -1;
+		Ubn[i] = up[i] * sgn[i];                              // velocity along N_i (junction -> pipe)
+	}
+
+	if(FGNx == NULL) {                                        // equally-spaced branch normals + species buffer
+		FGNx = new double[N];
+		FGNy = new double[N];
+		FGRhoY = new double[nsp];
+		for(int i = 0; i < N; i++) {
+			double th = TWOPI * i / N;
+			FGNx[i] = cos(th);
+			FGNy[i] = sin(th);
+		}
+	}
+	if(!FGInit) {                                             // init ghost = area-weighted, at rest; skip update this step
+		double Aw = 0., rw = 0., pw = 0., gw = 0., vsum = 0.;
+		for(int i = 0; i < N; i++) {
+			TTubo* P = FTuboExtremo[i].Pipe;
+			double dx = P->getLongitudTotal() / (P->getNin() - 1);
+			vsum += Ar[i] * dx;
+			Aw += Ar[i];
+			rw += rho[i] * Ar[i];
+			pw += pr[i] * Ar[i];
+			gw += gam[i] * Ar[i];
+		}
+		FGVol = vsum / N;
+		FGRho = rw / Aw;
+		double gg0 = gw / Aw, pg0 = pw / Aw;
+		FGMx = 0.;
+		FGMy = 0.;
+		FGE = pg0 / (gg0 - 1.0);
+		for(int k = 0; k < nsp; k++) {
+			double yw = 0.;
+			for(int i = 0; i < N; i++)
+				yw += FTuboExtremo[i].Pipe->GetFraccionMasicaCC(FIndiceCC[i], k) * rho[i] * Ar[i];
+			FGRhoY[k] = yw / Aw;
+		}
+		FGInit = true;
+		return;
+	}
+
+	const double ug = FGMx / FGRho, vg = FGMy / FGRho;        // ghost primitives
+	double gg = 0.;
+	for(int i = 0; i < N; i++)
+		gg += gam[i];
+	gg /= N;
+	double pg = (gg - 1.0) * (FGE - 0.5 * FGRho * (ug * ug + vg * vg));
+	if(pg < 1.0)
+		pg = 1.0;
+
+	double UnLrec[MAXB], sumY[MAXB];
+	double sumR = 0., sumMx = 0., sumMy = 0., sumE = 0., sumWx = 0., sumWy = 0.;
+	for(int k = 0; k < nsp; k++)
+		sumY[k] = 0.;
+	for(int i = 0; i < N; i++) {                              // interface fluxes (N_i frame) + ghost accumulation
+		const double Nx = FGNx[i], Ny = FGNy[i];
+		const double Un_g = ug * Nx + vg * Ny;
+		const double Utx = ug - Un_g * Nx, Uty = vg - Un_g * Ny;
+		const double dUn = Ubn[i] - Un_g;
+		const double delta = (Ubn[i] < 0.0) ? 0.0 : 1.0;      // 0 inflow to junction, 1 outflow (Eq 35)
+		const double G = delta * fmin(fabs(dUn) / aa[i], 1.0);
+		UnLrec[i] = Ubn[i] - G * dUn;                         // reconstructed ghost normal velocity (Eq 37)
+
+		double fr, fmn, fe;
+		RoeM1DFlux(FGRho, UnLrec[i], pg, gg, rho[i], Ubn[i], pr[i], gam[i], fr, fmn, fe);
+		const double Utxu = (fr >= 0.0) ? Utx : 0.0;          // tangential advected only from the ghost side
+		const double Utyu = (fr >= 0.0) ? Uty : 0.0;
+		sumR += fr * Ar[i];
+		sumE += fe * Ar[i];
+		sumMx += (fmn * Nx + fr * Utxu) * Ar[i];
+		sumMy += (fmn * Ny + fr * Utyu) * Ar[i];
+		sumWx += pg * Nx * Ar[i];                             // wall reaction (Eq 11)
+		sumWy += pg * Ny * Ar[i];
+		for(int k = 0; k < nsp; k++) {
+			double Yup = (fr >= 0.0) ? (FGRhoY[k] / FGRho) : FTuboExtremo[i].Pipe->GetFraccionMasicaCC(FIndiceCC[i], k);
+			sumY[k] += fr * Yup * Ar[i];
+		}
+	}
+
+	const double iv = DeltaT / FGVol;                         // ghost cell update (Eq 7a + wall force)
+	FGRho -= iv * sumR;
+	FGMx -= iv * (sumMx - sumWx);
+	FGMy -= iv * (sumMy - sumWy);
+	FGE -= iv * sumE;
+	for(int k = 0; k < nsp; k++)
+		FGRhoY[k] -= iv * sumY[k];
+	if(FGRho < 1e-6)
+		FGRho = 1e-6;
+	if(getenv("OPENWAM_GJM_DIAG") != NULL) {
+		// netMass = net mass flux out of ghost, netH0 = net stagnation-enthalpy flux out of ghost (Sum mdot*h0);
+		// thru = enthalpy-flux throughput. A conservative junction absorbs the imbalance in the ghost cell,
+		// which returns to steady (no cumulative insertion). See ramification-junction-energy-nonconservation.
+		double thru = 0.;
+		for(int i = 0; i < N; i++) {
+			double frr, fmm, fee;
+			double Un_g = ug * FGNx[i] + vg * FGNy[i];
+			RoeM1DFlux(FGRho, Ubn[i] - ((Ubn[i] < 0.) ? 0. : fmin(fabs(Ubn[i] - Un_g) / aa[i], 1.)) * (Ubn[i] - Un_g),
+					   pg, gg, rho[i], Ubn[i], pr[i], gam[i], frr, fmm, fee);
+			thru += fabs(fee * Ar[i]);
+		}
+		printf("GJMDIAG cc=%d t=%.6e rho_g=%.5f p_g=%.1f E_g=%.2f netMass=%.3e netH0=%.3e relH0=%.3e\n", FNumeroCC,
+			   FTiempoActual, FGRho, pg, FGE, sumR, sumE, (thru > 1e-30) ? fabs(sumE) / thru : 0.);
+	}
+	for(int k = 0; k < nsp; k++) {                            // junction outflow composition
+		FFraccionMasicaEspecie[k] = FGRhoY[k] / FGRho;
+		if(FFraccionMasicaEspecie[k] < 0.)
+			FFraccionMasicaEspecie[k] = 0.;
+	}
+
+	for(int i = 0; i < N; i++) {                              // branch boundary-cell update (Eq 18) + write-back
+		TTubo* P = FTuboExtremo[i].Pipe;
+		int nd = FNodoFin[i], nd1 = nd + sgn[i];
+		double dx = P->getLongitudTotal() / (P->getNin() - 1);
+		double A0 = P->GetArea(nd), Af = 0.5 * (A0 + P->GetArea(nd1));
+		double etv = pr[i] / (gam[i] - 1.0) + 0.5 * rho[i] * up[i] * up[i];
+		double Q0 = rho[i] * A0, Q1 = rho[i] * up[i] * A0, Q2 = etv * A0;
+
+		double r1 = P->GetDensidad(nd1), u1 = P->GetVelocidad(nd1) * ARef, p1 = __units::BarToPa(P->GetPresion(nd1)),
+			   g1 = P->GetGamma(nd1);
+		double Fi0, Fi1, Fi2, Fj0, Fj1, Fj2;
+		double ugx = UnLrec[i] * sgn[i];                      // ghost velocity in pipe +x
+		if(sgn[i] == 1) {                                     // left end: junction face on the left
+			RoeM1DFlux(rho[i], up[i], pr[i], gam[i], r1, u1, p1, g1, Fi0, Fi1, Fi2);
+			RoeM1DFlux(FGRho, ugx, pg, gg, rho[i], up[i], pr[i], gam[i], Fj0, Fj1, Fj2);
+		} else {                                              // right end: junction face on the right
+			RoeM1DFlux(r1, u1, p1, g1, rho[i], up[i], pr[i], gam[i], Fi0, Fi1, Fi2);
+			RoeM1DFlux(rho[i], up[i], pr[i], gam[i], FGRho, ugx, pg, gg, Fj0, Fj1, Fj2);
+		}
+		double c = DeltaT / dx, nQ0, nQ1, nQ2;
+		if(sgn[i] == 1) {
+			nQ0 = Q0 - c * (Af * Fi0 - A0 * Fj0);
+			nQ1 = Q1 - c * (Af * Fi1 - A0 * Fj1);
+			nQ2 = Q2 - c * (Af * Fi2 - A0 * Fj2);
+		} else {
+			nQ0 = Q0 - c * (A0 * Fj0 - Af * Fi0);
+			nQ1 = Q1 - c * (A0 * Fj1 - Af * Fi1);
+			nQ2 = Q2 - c * (A0 * Fj2 - Af * Fi2);
+		}
+		double rn = nQ0 / A0;
+		if(rn < 1e-6)
+			rn = 1e-6;
+		double un = nQ1 / nQ0, etn = nQ2 / A0;
+		double pn = (gam[i] - 1.0) * (etn - 0.5 * rn * un * un);
+		if(pn < 1.0)
+			pn = 1.0;
+		double an = sqrt(gam[i] * pn / rn);
+		double adim = an / ARef, vdim = un / ARef, pbar = __units::PaToBar(pn);
+		double G3 = __Gamma::G3(gam[i]), G5 = __Gamma::G5(gam[i]);
+		FTuboExtremo[i].Landa = adim + G3 * vdim;
+		FTuboExtremo[i].Beta = adim - G3 * vdim;
+		FTuboExtremo[i].Entropia = adim / pow(pbar, G5);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 void TCCRamificacion::CalculaCondicionContorno(double Time) {
 	try {
 		double sonido_supuesta_ad, sonido_ant_ad, entropia_entrante, corr_entropia;
@@ -199,6 +422,16 @@ void TCCRamificacion::CalculaCondicionContorno(double Time) {
 		FTiempoActual = Time;
 		DeltaT = FTiempoActual - FTiempoAnterior;
 		FTiempoAnterior = FTiempoActual;
+
+		// GJM (Ghost Junction Method) path. Runs once per step (first call, DeltaT>0) and updates ALL
+		// branch characteristics; subsequent per-pipe calls this step just return. See CalculaCondicionContornoGJM.
+		if(FUseGJM == -1)
+			FUseGJM = (getenv("OPENWAM_GJM") != NULL) ? 1 : 0;
+		if(FUseGJM == 1) {
+			if(DeltaT > 1e-12)
+				CalculaCondicionContornoGJM(DeltaT);
+			return;
+		}
 
 		if(FTuboActual == 10000) {
 			TuboCalculado = FTuboActual;
