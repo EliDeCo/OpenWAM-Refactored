@@ -1522,10 +1522,13 @@ void TOpenWAM::ReadConnections() {
 			contador = 0;
 			for(int j = 0; j < NumberOfConnections; j++) {
 				if(BC[j]->getTipoCC() == nmVolumetricCompressor) {
-					if(contador + 1 == dynamic_cast<TCCCompresorVolumetrico*>(BC[j])->getNumeroCV()) {
-						VolumetricCompressor[contador] = dynamic_cast<TCCCompresorVolumetrico*>(BC[j]);
-						contador++;
-					}
+					// Populate sequentially in BC order, matching every other BC-lookup array
+					// above (PerdidaPresion/InjectionEnd/ReedValve/...). The previous
+					// `contador+1 == getNumeroCV()` gate left the slot unpopulated whenever the
+					// stored screw-compressor index was not 1-based (the UI writes it 0-based),
+					// so a requested CV output later dereferenced a null Root -> segfault.
+					VolumetricCompressor[contador] = dynamic_cast<TCCCompresorVolumetrico*>(BC[j]);
+					contador++;
 				}
 			}
 		}
@@ -1588,11 +1591,16 @@ void TOpenWAM::ReadConnections() {
 				if(BC[j]->getTipoCC() == nmPipeToPlenumConnection) {
 					if(dynamic_cast<TCCDeposito*>(BC[j])->getValvula()->getTypeOfValve() == nmWasteGate) {
 						BCWasteGate[contador] = BC[j];
+						// Wire the wastegate's control (boost-sensing) tube. CalculoNodoAdm is otherwise
+						// never called, leaving FTuboAdm uninitialized -> GetCDin/GetCDout dereference a
+						// garbage pointer and segfault on the first step.
+						dynamic_cast<TWasteGate*>(dynamic_cast<TCCDeposito*>(BC[j])->getValvula())->CalculoNodoAdm(Pipe);
 						contador++;
 					}
 				} else if(BC[j]->getTipoCC() == nmUnionEntreDepositos) {
 					if(dynamic_cast<TCCUnionEntreDepositos*>(BC[j])->getValvula()->getTypeOfValve() == nmWasteGate) {
 						BCWasteGate[contador] = BC[j];
+						dynamic_cast<TWasteGate*>(dynamic_cast<TCCUnionEntreDepositos*>(BC[j])->getValvula())->CalculoNodoAdm(Pipe);
 						contador++;
 					}
 				}

@@ -477,7 +477,10 @@ struct stComprVol {
 	;
 
 	double operator()(const double Vel) {
-		double entropia = A * AA / (BC + Ga3 * Vel);
+		// NOTE: assign the MEMBER `entropia` (do not redeclare a local). The caller reads
+		// CV.entropia after FindRoot to write the pipe-end entropy; a shadowing local left the
+		// member uninitialized -> NaN entropy poisoned the pipe on the first step.
+		entropia = A * AA / (BC + Ga3 * Vel);
 		U = Gasto_calculado * pow(entropia, Ga4) / (CD * Gam * F * __units::BarToPa(PRef) / ARef * pow(A, 1 / Ga3));
 
 		return U - Vel;

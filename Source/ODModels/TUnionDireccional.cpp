@@ -285,7 +285,7 @@ void TUnionDireccional::CalculoUnionDireccional() {
 		/* Calculo del coeficiente de descarga de salida en el Pipe de Entrada 1 */
 		if(FVelocity[0] <= FVelocidadCorte[1]) {
 			dynamic_cast<TCCDeposito*>(FCCEntrada[1])->PutCDSalida(FCDSalidaInicial[1]);
-		} else if(FVelocity[0] >= FVelocidadFin[0]) {
+		} else if(FVelocity[0] >= FVelocidadFin[1]) { // was FVelocidadFin[0] (copy-paste bug: inlet-1 must use its own end speed)
 			dynamic_cast<TCCDeposito*>(FCCEntrada[1])->PutCDSalida(0);
 		} else {
 			dynamic_cast<TCCDeposito*>(FCCEntrada[1])->PutCDSalida(FCoefA[1] + FCoefB[1] * FVelocity[0]);
