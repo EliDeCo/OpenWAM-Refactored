@@ -562,10 +562,8 @@ class TTubo {
 	void CalculaMatrizJacobiana();
 
 	/*! Comment */
-	void TVD_Estabilidad();
 
 	/*! Comment */
-	void TVD_Limitador();
 
 	void RoeConstants();
 

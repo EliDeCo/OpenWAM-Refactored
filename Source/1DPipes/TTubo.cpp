@@ -1611,12 +1611,7 @@ void TTubo::EstabilidadMetodoCalculo() {
 		}
 		FDeltaTime = FCourant * FXref / VTotalMax;
 
-		if(FMod.Modelo == nmTVD) {
-#ifdef OPENWAM_LEGACY_TVD
-			TVD_Estabilidad();   // legacy TVD rebuilds the Roe-Jacobian stability + dt here
-#endif
-			// RoeM uses the base dt = FCourant*FXref/(|u|+a) computed above; TVD-RK3 is stable for CFL <= 1.
-		}
+		// RoeM (nmTVD slot) uses the base dt = FCourant*FXref/(|u|+a) computed above; TVD-RK3 is stable for CFL <= 1.
 
 		FTime0 = FTime1;
 		FTime1 = FTime0 + FDeltaTime;
@@ -1644,11 +1639,7 @@ void TTubo::CalculaVariablesFundamentales() {
 				FluxCorrectedTransport();
 			}
 		} else if(FMod.Modelo == nmTVD) {
-#ifdef OPENWAM_LEGACY_TVD
-			TVD_Limitador();
-#else
-			RoeM_RK3();   // GJM+RoeM upgrade: RoeM1 + TVD-RK3 replaces the legacy TVD/entropy-fix scheme
-#endif
+			RoeM_RK3();   // RoeM1 + TVD-RK3 (nmTVD slot; legacy TVD/entropy-fix scheme removed)
 		} else {
 			std::cout << "ERROR: Metodo de calculo no implementado" << std::endl;
 			throw Exception("");
@@ -2695,13 +2686,11 @@ void TTubo::TransformaContorno(double& L, double& B, double& E, double& a, doubl
 
 void TTubo::ReduccionFlujoSubsonico() {
 	double Machx = 0., Machy = 0., Velocidady = 0., Sonidoy = 0.;
-#ifndef OPENWAM_LEGACY_TVD
-	// RoeM (Phase 5): the b1/b2 HLL wave speeds handle supersonic flow and expansion natively, so the
-	// normal-shock subsonic clip is both unnecessary and inconsistent (it would corrupt a genuine
-	// supersonic region, e.g. a C-D nozzle diverging section). Retire it on the RoeM path.
+	// RoeM (nmTVD slot): the b1/b2 HLL wave speeds handle supersonic flow and expansion natively, so the
+	// normal-shock subsonic clip is unnecessary and inconsistent (it would corrupt a genuine supersonic
+	// region, e.g. a C-D nozzle diverging section). Retired on the RoeM path.
 	if(FMod.Modelo == nmTVD)
 		return;
-#endif
 #ifdef usetry
 	try {
 #endif
@@ -5407,232 +5396,6 @@ void TTubo::CalculaMatrizJacobiana() {
 #ifdef usetry
 	} catch(exception & N) {
 		std::cout << "ERROR: TTubo::CalculaMatrizJacobiana tubo:" << FNumeroTubo << std::endl;
-		std::cout << "Tipo de error: " << N.what() << std::endl;
-		throw Exception(N.what());
-	}
-#endif
-}
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-
-void TTubo::TVD_Estabilidad() {
-#ifdef usetry
-	try {
-#endif
-		double VTotalMax = 0.;
-		double VLocal = 0., DeltaT_tvd = 0.;
-
-		CalculaFlujo(FU0, FTVD.W, FGamma, FGamma1, FNin);
-
-		CalculaMatrizJacobiana();
-
-		/* Half-cell area/friction/heat sources. Corberan & Gascon (1995) eq. 18 uses the SAME
-		 source, B_{i,i+1/2} + B_{i+1/2,i+1} = Bmas[i] + Bmen[i+1], in BOTH the applied flux and
-		 the characteristic projection (DeltaW) below. They depend only on FU0/FArea12/sqrtRhoA,
-		 not on FDeltaTime, so they are valid here. The separate full-cell CalculaB()/Bvector,
-		 which used a third, inconsistent Roe average in the projection only, is retired. */
-		CalculaBmas();
-		CalculaBmen();
-
-		for(int i = 0; i < FNin - 1; i++) {
-			for(int k = 0; k < 3; ++k) {
-				/* Projection of the (flux + source) jump onto the k-th characteristic field,
-				 eq. 18. Corberan & Gascon express EVERY difference as a flux difference: the
-				 scheme carries no conserved-variable (W) difference and no source-augmented
-				 eigenvalue. The former "Beta = DeltaB/DeltaU" term (a W-difference the paper's
-				 conclusion blames for excessive diffusion at strong dA/dx) is removed; the CFL
-				 (eq. 21) and the antidiffusive coefficient (eq. 37) use the pure eigenvalues. */
-				FTVD.DeltaW[k][i] =
-					FTVD.Qmatrix[k][0][i] * (FTVD.W[0][i + 1] - FTVD.W[0][i] + FTVD.Bmas[0][i] + FTVD.Bmen[0][i + 1]) +
-					FTVD.Qmatrix[k][1][i] * (FTVD.W[1][i + 1] - FTVD.W[1][i] + FTVD.Bmas[1][i] + FTVD.Bmen[1][i + 1]) +
-					FTVD.Qmatrix[k][2][i] * (FTVD.W[2][i + 1] - FTVD.W[2][i] + FTVD.Bmas[2][i] + FTVD.Bmen[2][i + 1]);
-				if((VLocal = fabs(FTVD.Alpha[k][i])) > VTotalMax) {   // eq. 21: max(|u| + a)
-					VTotalMax = VLocal;
-				}
-			}
-		}
-		DeltaT_tvd = FCourant * FXref / VTotalMax;
-		if(DeltaT_tvd < FDeltaTime)
-			FDeltaTime = DeltaT_tvd;
-#ifdef usetry
-	} catch(exception & N) {
-		std::cout << "ERROR: TTubo::TVD_Estabilidad tubo:" << FNumeroTubo << std::endl;
-		std::cout << "Tipo de error: " << N.what() << std::endl;
-		throw Exception(N.what());
-	}
-#endif
-}
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-
-void TTubo::TVD_Limitador() {
-#ifdef usetry
-	try {
-#endif
-		double dtdx = FDeltaTime / FXref;
-		// SoA row stride (Npad) and equation count for flat indexing in the vectorized loops below.
-		const size_t Npad = (static_cast<size_t>(FNin) + 3u) & ~static_cast<size_t>(3u);
-		const size_t NEQ = static_cast<size_t>(FNumEcuaciones);
-
-		// Bmas/Bmen/Cmas/Cmen were already built by EstabilidadMetodoCalculo -> TVD_Estabilidad
-		// (Phase 3, or the initial pass in the startup loop) on this exact state. They are pure
-		// state functions (depend on FU0/FArea/sqrtRhoA, NOT on FDeltaTime), and FU0 is unchanged
-		// between that pass and here, so recomputing them is redundant -- reuse the stored FTVD
-		// values. Corberan-Gascon (1995): the source B/C is evaluated once per step (it is not part
-		// of the CFL, eq. 21). Removes a full Bmas+Bmen pass per step, incl. up to half of all
-		// Colebrook calls. Bit-identical (verified vs baseline).
-
-		// Signal speeds. Row pointers hoisted (+ __restrict) so the i-loop is a plain unit-stride
-		// array op the auto-vectorizer accepts -- the double** views alone defeat it. Bit-identical.
-		for(int k = 0; k < FNumEcuaciones; k++) {
-			double *__restrict Lk = FTVD.LandaD[k];
-			int *__restrict Hk = FTVD.hLandaD[k];
-			const double *__restrict Ak = FTVD.Alpha[k];
-#pragma loop(ivdep)
-			for(int i = 0; i < FNin - 1; ++i) {
-				Lk[i] = dtdx * Ak[i];   // pure eigenvalue (CG eq. 37); no Beta
-				Hk[i] = (Lk[i] >= 0.) ? 1 : -1;
-			}
-		}
-		for(int i = 1; i < FNin - 2; ++i) {
-			for(int k = 0; k < 3; k++) {
-				double den = (((double) FTVD.hLandaD[k][i] - FTVD.LandaD[k][i]) * FTVD.DeltaW[k][i]);
-				double num = ((double) FTVD.hLandaD[k][i - FTVD.hLandaD[k][i]] - FTVD.LandaD[k][i - FTVD.hLandaD[k][i]]) *
-							 (FTVD.DeltaW[k][i - FTVD.hLandaD[k][i]]);
-				if(fabs(den) > 1e-10)
-					FTVD.R[k][i] = num / den;
-				else
-					FTVD.R[k][i] = 1;
-			}
-
-			for(int k = 3; k < FNumEcuaciones; k++) {
-				double num = ((double) FTVD.hLandaD[k][i - FTVD.hLandaD[k][i]] - FTVD.LandaD[k][i - FTVD.hLandaD[k][i]]) *
-							 (FTVD.W[k][i + 1 - FTVD.hLandaD[k][i]] - FTVD.W[k][i - FTVD.hLandaD[k][i]]);
-				double den = ((double) FTVD.hLandaD[k][i] - FTVD.LandaD[k][i]) * (FTVD.W[k][i + 1] - FTVD.W[k][i]);
-				if(fabs(den) > 1e-10)
-					FTVD.R[k][i] = num / den;
-				else
-					FTVD.R[k][i] = 1;
-			}
-		}
-		for(int k = 0; k < FNumEcuaciones; k++) {
-			FTVD.R[k][0] = FTVD.R[k][1];
-			FTVD.R[k][FNin - 2] = FTVD.R[k][FNin - 3];
-		}
-		for(int i = 0; i < FNin - 1; ++i) {
-			for(int k = 0; k < 3; k++) {
-				// First-order signal-speed coefficient. Default = sign(Alpha+Beta), as before.
-				double hcoef = (double) FTVD.hLandaD[k][i];
-				// Entropy fix (Corberan & Gascon 1995, eqs. 38-40): for the 1st (u-a) and 3rd
-				// (u+a) fields, when the field is a rarefaction (the physical cell eigenvalue,
-				// not the Roe mean, is the extremum of eq. 39) replace sign by the graded ratio
-				// |lambda_cell| / lambda_Roe. This restores the dissipation the Roe mean loses
-				// near sonic points, ruling out stationary (nonphysical) expansion shocks.
-				// lambda_Roe is Alpha (Vmed -/+ Amed); the guard avoids the sonic 0/0.
-				if(k == 0) {
-					double lRoe = FTVD.Alpha[0][i];                           // Roe (u - a)
-					double lCell = FVelocidadDim[i] - FAsonidoDim[i];         // (u - a)_i
-					if(lCell < lRoe && fabs(lRoe) > 1e-8)
-						hcoef = fabs(lCell) / lRoe;
-				} else if(k == 2) {
-					double lRoe = FTVD.Alpha[2][i];                           // Roe (u + a)
-					double lCell = FVelocidadDim[i + 1] + FAsonidoDim[i + 1]; // (u + a)_{i+1}
-					if(lCell > lRoe && fabs(lRoe) > 1e-8)
-						hcoef = fabs(lCell) / lRoe;
-				}
-				FTVD.Phi[k][i] = hcoef - Limita(FTVD.R[k][i]) * (hcoef - FTVD.LandaD[k][i]);
-			}
-		}
-
-		// Central flux + limited dissipation (reversible area source B only; C added below). Flat
-		// (double*) + __restrict indexing so MSVC can prove unit-stride and vectorize -- the
-		// double**/double*** views defeat the auto-vectorizer even with contiguous (Stage-1) data.
-		// Layout: X[k][i] == Xbase[k*Npad+i]; Pmatrix[k][j][i] == Pbase[(k*NEQ+j)*Npad+i]. Bit-identical.
-		{
-			const double *__restrict Wb  = FTVD.W[0];
-			const double *__restrict Bma = FTVD.Bmas[0];
-			const double *__restrict Bme = FTVD.Bmen[0];
-			const double *__restrict Pm  = FTVD.Pmatrix[0][0];
-			const double *__restrict Ph0 = FTVD.Phi[0];
-			const double *__restrict Ph1 = FTVD.Phi[0] + Npad;
-			const double *__restrict Ph2 = FTVD.Phi[0] + 2 * Npad;
-			const double *__restrict DW0 = FTVD.DeltaW[0];
-			const double *__restrict DW1 = FTVD.DeltaW[0] + Npad;
-			const double *__restrict DW2 = FTVD.DeltaW[0] + 2 * Npad;
-			for(int k = 0; k < 3; ++k) {
-				double *__restrict gfk = FTVD.gflux[0] + k * Npad;
-				const double *__restrict Wk  = Wb  + k * Npad;
-				const double *__restrict Bmk = Bma + k * Npad;
-				const double *__restrict Bnk = Bme + k * Npad;
-				const double *__restrict Pk0 = Pm + (k * NEQ + 0) * Npad;
-				const double *__restrict Pk1 = Pm + (k * NEQ + 1) * Npad;
-				const double *__restrict Pk2 = Pm + (k * NEQ + 2) * Npad;
-#pragma loop(ivdep)
-				for(int i = 0; i < FNin - 1; ++i) {
-					gfk[i] = 0.5 * (Wk[i] + Wk[i + 1] - Bmk[i] + Bnk[i + 1]
-									- (Pk0[i] * Ph0[i] * DW0[i] + Pk1[i] * Ph1[i] * DW1[i] + Pk2[i] * Ph2[i] * DW2[i]));
-				}
-			}
-		}
-		/* Corberan & Gascon (1995) eq. 18: characteristic redistribution of the irreversible source
-		 C (friction + heat), + Dt*(R Lambda L)C at the face i+1/2, with C_{i+1/2} the source of the
-		 two half-cells straddling the face = Cmas[i] + Cmen[i+1]. R Lambda L = J (the Roe Jacobian),
-		 so C is carried along characteristics at the PURE eigenvalues Alpha -- never through the flux
-		 limiter (Phi/h are not used here). OpenWAM's C carries the opposite sign to the paper's (its
-		 direct source is applied with a minus, below), so the paper's +Dt(RLL)C maps to
-		 -0.5*dtdx*(J*Cface) here. Vanishes with C (at rest: friction ~ u^2 = 0, adiabatic q = 0).
-		 Per-face Cface/LCf kept as loop-local scalars so the i-loop still vectorizes. */
-		{
-			double *__restrict gf = FTVD.gflux[0];
-			const double *__restrict cma = FTVD.Cmas[0];
-			const double *__restrict cme = FTVD.Cmen[0];
-			const double *__restrict Qm = FTVD.Qmatrix[0][0];
-			const double *__restrict Pm = FTVD.Pmatrix[0][0];
-			const double *__restrict Ab = FTVD.Alpha[0];
-			const size_t N1 = Npad, N2 = 2 * Npad;                // column offset j*Npad
-			const size_t mr1 = NEQ * Npad, mr2 = 2 * NEQ * Npad;  // matrix row offset m*NEQ*Npad
-#pragma loop(ivdep)
-			for(int i = 0; i < FNin - 1; ++i) {
-				const double Cf0 = cma[i] + cme[i + 1];
-				const double Cf1 = cma[N1 + i] + cme[N1 + i + 1];
-				const double Cf2 = cma[N2 + i] + cme[N2 + i + 1];
-				const double LCf0 = Qm[i] * Cf0 + Qm[N1 + i] * Cf1 + Qm[N2 + i] * Cf2;
-				const double LCf1 = Qm[mr1 + i] * Cf0 + Qm[mr1 + N1 + i] * Cf1 + Qm[mr1 + N2 + i] * Cf2;
-				const double LCf2 = Qm[mr2 + i] * Cf0 + Qm[mr2 + N1 + i] * Cf1 + Qm[mr2 + N2 + i] * Cf2;
-				gf[i]      -= 0.5 * dtdx * (Pm[i] * Ab[i] * LCf0 + Pm[N1 + i] * Ab[N1 + i] * LCf1 + Pm[N2 + i] * Ab[N2 + i] * LCf2);
-				gf[N1 + i] -= 0.5 * dtdx * (Pm[mr1 + i] * Ab[i] * LCf0 + Pm[mr1 + N1 + i] * Ab[N1 + i] * LCf1 + Pm[mr1 + N2 + i] * Ab[N2 + i] * LCf2);
-				gf[N2 + i] -= 0.5 * dtdx * (Pm[mr2 + i] * Ab[i] * LCf0 + Pm[mr2 + N1 + i] * Ab[N1 + i] * LCf1 + Pm[mr2 + N2 + i] * Ab[N2 + i] * LCf2);
-			}
-		}
-		// Species (k>=3): passively advected; kept scalar (usually FNumEcuaciones==3 => never runs).
-		for(int i = 0; i < FNin - 1; ++i) {
-			for(int k = 3; k < FNumEcuaciones; k++) {
-				FTVD.gflux[k][i] = 0.5 * (FTVD.W[k][i] + FTVD.W[k][i + 1] - (double) FTVD.hLandaD[k][i] *
-										  (FTVD.W[k][i + 1] - FTVD.W[k][i])) + 0.5 * Limita(FTVD.R[k][i]) * ((double) FTVD.hLandaD[k][i] - FTVD.LandaD[k][i]) *
-								   (FTVD.W[k][i + 1] - FTVD.W[k][i]);
-			}
-		}
-		// Conservative update (CG eq. 17): flux difference + direct cell source (area B = Bmen+Bmas
-		// plus the irreversible C = Cmen+Cmas). The B+C sum equals the pre-split total so area
-		// behaviour is unchanged. Row pointers hoisted (+ __restrict) => unit-stride, vectorizable.
-		for(int k = 0; k < FNumEcuaciones; k++) {
-			double *__restrict fu1k = FU1[k];
-			const double *__restrict fu0k = FU0[k];
-			const double *__restrict gfk = FTVD.gflux[k];
-			const double *__restrict bmk = FTVD.Bmas[k];
-			const double *__restrict bnk = FTVD.Bmen[k];
-			const double *__restrict cmk = FTVD.Cmas[k];
-			const double *__restrict cnk = FTVD.Cmen[k];
-#pragma loop(ivdep)
-			for(int i = 1; i < FNin - 1; ++i) {
-				fu1k[i] = fu0k[i] - dtdx * ((gfk[i] - gfk[i - 1]) + (bnk[i] + bmk[i] + cnk[i] + cmk[i]));
-			}
-		}
-#ifdef usetry
-	} catch(exception & N) {
-		std::cout << "ERROR: TTubo::TVD_Limitador tubo:" << FNumeroTubo << std::endl;
 		std::cout << "Tipo de error: " << N.what() << std::endl;
 		throw Exception(N.what());
 	}

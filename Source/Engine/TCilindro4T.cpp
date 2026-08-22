@@ -187,7 +187,11 @@ void TCilindro4T::ActualizaPropiedades(double TiempoActual) {
 				}
 			} else if(FCalcComb == nmACT) {
 				FNumIny = 1;
-				FAnguloInjeccion[0] = FMotor->getInjecPulse(0).Angulo;
+				// ACT branch must size these before indexing (nmFQL branches resize; ACT did not -> empty-vector [0] segfault).
+					FAnguloInjeccion.resize(FNumIny);
+					FTInyeccion.resize(FNumIny);
+					FPercentInyeccion.resize(FNumIny);
+					FAnguloInjeccion[0] = FMotor->getInjecPulse(0).Angulo;
 				FIniComb = FMotor->getInjecPulse(0).Angulo;
 				FFinComb = FDistribucion.AE;
 			}
@@ -546,7 +550,7 @@ void TCilindro4T::ActualizaPropiedades(double TiempoActual) {
 
 			// MOTOR EN COMBUSTION
 		} else {
-			Fc2 = 0.001; // antes 3.24e-3  (ahora 0.001) MOTOR DE CAMARA ABIERTA ;  6.22e-3  MOTOR DE C�MARA DIVIDIDA
+			Fc2 = (FMotor->getWoschni().xpe > 0. ? FMotor->getWoschni().xpe : 0.001); // xpe = WAM Woschni 3rd coef = combustion-term coefficient; 0 -> default 0.001 (std open-chamber DI Woschni ~3.24e-3)
 		}
 
 		// COEFICIENTE DE PELICULA DE WOSCHNI
@@ -628,7 +632,7 @@ void TCilindro4T::ActualizaPropiedades(double TiempoActual) {
 					FecgTotal += (Fecg + Fecg0) / 2 * FDeltaT;
 					Fecg0 = Fecg;
 				} else if(FCalcComb == nmACT) {
-					FCalor.FQL = Interp1(FAnguloComb, FCAD_exit, FHRF_exit, FCAI);
+						FCalor.FQL = Interp1(FAnguloComb, FCAD_exit, FHRF_exit, FCAI);
 					// printf("%lf %lf\n",FAnguloComb,FCalor.FQL);
 				}
 				FCalor.Liberado = (FCalor.FQL - FCalor.FQL0) * FMfint * FMotor->getPoderCalorifico() *

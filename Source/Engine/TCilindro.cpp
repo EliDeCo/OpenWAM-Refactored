@@ -2041,15 +2041,8 @@ void TCilindro::IniciaVariables() {
 		}
 
 		// Sequential PD -> PM scavenging model (only used by TCilindro2T).
-		// [CALIBRATION - TEMPORARY] allows sweeping the two scavenging parameters via
-		// the OPENWAM_FBPD / OPENWAM_YSC environment variables without recompiling.
-		// When a variable is not set, the compiled default is used.
-		{
-			const char* _fbpd = getenv("OPENWAM_FBPD");
-			FFraccionDesplazamiento = _fbpd ? atof(_fbpd) : __cons::FraccionBarridoPD;
-			const char* _ysc = getenv("OPENWAM_YSC");
-			FShortCircuitFraction = _ysc ? atof(_ysc) : __cons::ShortCircuitFractionBB;
-		}
+		FFraccionDesplazamiento = __cons::FraccionBarridoPD;
+		FShortCircuitFraction = __cons::ShortCircuitFractionBB;
 		FMasaInicioBarrido = 0.;
 		FMasaEntregadaBarrido = 0.;
 		FBarridoIniciado = false;

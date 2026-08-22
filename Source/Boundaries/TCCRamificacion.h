@@ -57,9 +57,8 @@ class TCCRamificacion: public TCondicionContorno {
 	double FGamma1;
 	double *FMasaEspecie;
 
-	// --- GJM (Ghost Junction Method, Hong & Kim 2011). Behind OPENWAM_GJM; see
+	// --- GJM (Ghost Junction Method, Hong & Kim 2011), unconditional; see
 	//     Notes/GJM-Implementation-Recipe.md. Persistent 2-D ghost cell in SI units. ---
-	int FUseGJM;                 // -1 = unchecked, 0 = off, 1 = on (env OPENWAM_GJM)
 	bool FGInit;                 // ghost cell initialised?
 	double FGRho, FGMx, FGMy, FGE;   // ghost cell: rho, rho*u, rho*v, rho*et  (SI)
 	double *FGRhoY;              // ghost cell species (rho*Y)_k * (per volume)

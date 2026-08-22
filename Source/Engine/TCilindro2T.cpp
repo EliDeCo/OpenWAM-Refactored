@@ -566,7 +566,7 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 				Fc2 = 0;
 				// MOTOR EN COMBUSTION
 			} else {
-				Fc2 = 0.001; // antes 3.24e-3  (ahora 0.001)MOTOR DE CAMARA ABIERTA ;  6.22e-3  MOTOR DE CAMARA DIVIDIDA
+				Fc2 = (FMotor->getWoschni().xpe > 0. ? FMotor->getWoschni().xpe : 0.001); // xpe = WAM Woschni 3rd coef = combustion-term coefficient; 0 -> default 0.001 (std open-chamber DI Woschni ~3.24e-3)
 			}
 			// COEFICIENTE DE PELICULA DE WOSCHNI
 			double deltaP = __units::BarToPa(FPressure - FPresionRCA * pow(FVolumenCA / FVolumen, 1.36));

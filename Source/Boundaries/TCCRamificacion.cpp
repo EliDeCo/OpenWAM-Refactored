@@ -55,7 +55,6 @@ TCCRamificacion::TCCRamificacion(nmTypeBC TipoCC, int numCC, nmTipoCalculoEspeci
 
 	FMasaEspecie = NULL;
 
-	FUseGJM = -1;
 	FGInit = false;
 	FGRhoY = NULL;
 	FGNx = NULL;
@@ -340,21 +339,6 @@ void TCCRamificacion::CalculaCondicionContornoGJM(double DeltaT) {
 		FGRhoY[k] -= iv * sumY[k];
 	if(FGRho < 1e-6)
 		FGRho = 1e-6;
-	if(getenv("OPENWAM_GJM_DIAG") != NULL) {
-		// netMass = net mass flux out of ghost, netH0 = net stagnation-enthalpy flux out of ghost (Sum mdot*h0);
-		// thru = enthalpy-flux throughput. A conservative junction absorbs the imbalance in the ghost cell,
-		// which returns to steady (no cumulative insertion). See ramification-junction-energy-nonconservation.
-		double thru = 0.;
-		for(int i = 0; i < N; i++) {
-			double frr, fmm, fee;
-			double Un_g = ug * FGNx[i] + vg * FGNy[i];
-			RoeM1DFlux(FGRho, Ubn[i] - ((Ubn[i] < 0.) ? 0. : fmin(fabs(Ubn[i] - Un_g) / aa[i], 1.)) * (Ubn[i] - Un_g),
-					   pg, gg, rho[i], Ubn[i], pr[i], gam[i], frr, fmm, fee);
-			thru += fabs(fee * Ar[i]);
-		}
-		printf("GJMDIAG cc=%d t=%.6e rho_g=%.5f p_g=%.1f E_g=%.2f netMass=%.3e netH0=%.3e relH0=%.3e\n", FNumeroCC,
-			   FTiempoActual, FGRho, pg, FGE, sumR, sumE, (thru > 1e-30) ? fabs(sumE) / thru : 0.);
-	}
 	for(int k = 0; k < nsp; k++) {                            // junction outflow composition
 		FFraccionMasicaEspecie[k] = FGRhoY[k] / FGRho;
 		if(FFraccionMasicaEspecie[k] < 0.)
@@ -411,167 +395,18 @@ void TCCRamificacion::CalculaCondicionContornoGJM(double DeltaT) {
 
 void TCCRamificacion::CalculaCondicionContorno(double Time) {
 	try {
-		double sonido_supuesta_ad, sonido_ant_ad, entropia_entrante, corr_entropia;
-		double suma1 = 0., suma2 = 0., sm1 = 0., sm2 = 0., sm3 = 0.;
-		int TuboCalculado = 0;
-		double DeltaT, MasaTotal = 0., g, m, FraccionMasicaAcum = 0.;
-		// Necesarias para el calculo de especies en la BC.
-
-		sonido_supuesta_ad = 0.;
+		double DeltaT;
 
 		FTiempoActual = Time;
 		DeltaT = FTiempoActual - FTiempoAnterior;
 		FTiempoAnterior = FTiempoActual;
 
-		// GJM (Ghost Junction Method) path. Runs once per step (first call, DeltaT>0) and updates ALL
-		// branch characteristics; subsequent per-pipe calls this step just return. See CalculaCondicionContornoGJM.
-		if(FUseGJM == -1)
-			FUseGJM = (getenv("OPENWAM_GJM") != NULL) ? 1 : 0;
-		if(FUseGJM == 1) {
-			if(DeltaT > 1e-12)
-				CalculaCondicionContornoGJM(DeltaT);
-			return;
-		}
-
-		if(FTuboActual == 10000) {
-			TuboCalculado = FTuboActual;
-			FGamma = FTuboExtremo[0].Pipe->GetGamma(FNodoFin[0]);
-		} else {
-			for(int i = 0; i < FNumeroTubosCC; i++) {
-				if(FNumeroTubo[i] == FTuboActual) {
-					TuboCalculado = i;
-				}
-			}
-			FGamma = FTuboExtremo[TuboCalculado].Pipe->GetGamma(FNodoFin[TuboCalculado]);
-		}
-		// FGamma=FTuboExtremo[TuboCalculado].Pipe->GetGamma(FNodoFin[TuboCalculado]);
-		FGamma1 = __Gamma::G1(FGamma);
-		FGamma3 = __Gamma::G3(FGamma);
-		FGamma4 = __Gamma::G4(FGamma);
-
-		for(int i = 0; i < FNumeroTubosCC; i++) {
-			FEntropia[i] = FTuboExtremo[i].Entropia;
-		}
-
-		do {
-			/* Determinacion de la velocidad del sonido en la ramificacion. */
-			suma1 = 0.;
-			suma2 = 0.;
-			for(int i = 0; i < FNumeroTubosCC; i++) {
-				suma1 = suma1 + (*FCC[i]) * FSeccionTubo[i] / pow2(FEntropia[i]);
-				suma2 = suma2 + FTuboExtremo[i].Entropia * FSeccionTubo[i] / pow2(FEntropia[i]);
-			}
-			sonido_ant_ad = sonido_supuesta_ad;
-			sonido_supuesta_ad = suma1 / suma2; // Velocity del sonido adimensionalizada (si las variables fuesen dimensionales).
-			// Es una especie de promedio respecto de la entropia de cada tubo.
-
-			/* Determinacion de la velocidad de cada tubo de la ramificacion. Esta
-			 velocidad sera positiva si el flujo sale del tubo (tubo saliente) y
-			 negativa si el flujo entra en el tubo (tubo entrante). En realidad se trata
-			 de la velocidad solo para extremo derecho. Para el extremo izquierdo,esta multiplicada
-			 por un signo negativo. */
-			for(int i = 0; i < FNumeroTubosCC; i++) {
-				FVelocity[i] = (*FCC[i] - sonido_supuesta_ad * FTuboExtremo[i].Entropia) / FGamma3;
-			}
-
-			/* Calculo de la entropia de los tubos entrantes (el flujo entra en ellos).
-			 Esta entropia es igual para todos ellos y se calcula como un balance del
-			 flujo que llega de los tubos salientes (de velocidad positiva). */
-			sm1 = 0.;
-			sm2 = 0.;
-			sm3 = 0.;
-			for(int i = 0; i < FNumeroTubosCC; i++) {
-				sm3 = sm3 + FTuboExtremo[i].Entropia;
-				if(FVelocity[i] > 2e-6) {
-					sm1 = sm1 + FVelocity[i] * FSeccionTubo[i] * FEntropia[i];
-					sm2 = sm2 + FVelocity[i] * FSeccionTubo[i];
-				}
-			}
-
-			if(sm2 < 2e-6) {
-				entropia_entrante = sm3 / FNumeroTubosCC;
-			} else {
-				/* Desde el punto de vista teorico esta es la forma correcta. La
-				 formula anterior es para evitar errores de indeterminacion si
-				 sm2 es muy pequena,por lo que se acepta como aproximacion. */
-				entropia_entrante = sm1 / sm2;
-			}
-			for(int i = 0; i < FNumeroTubosCC; i++) {
-				FEntropia[i] = FTuboExtremo[i].Entropia;
-				if(FVelocity[i] < 0) {   // Flujo entrante al tubo
-					FEntropia[i] = entropia_entrante;
-				}
-			}
-		} while((sonido_supuesta_ad - sonido_ant_ad) / (sonido_ant_ad + 0.01) > 1e-4);
-
-		/* Calculo de las caracteristicas y la entropia en los extremos del tubo que se
-		 esta calculando, una vez resuelta la condicion de contorno */
-		if(TuboCalculado != 10000) {
-			corr_entropia = FTuboExtremo[TuboCalculado].Entropia / FEntropia[TuboCalculado];
-			*FCC[TuboCalculado] = (*FCC[TuboCalculado] + FGamma3 * FVelocity[TuboCalculado] * (corr_entropia - 1)) / corr_entropia;
-			*FCD[TuboCalculado] = *FCC[TuboCalculado] - FGamma1 * FVelocity[TuboCalculado];
-			FTuboExtremo[TuboCalculado].Entropia = FEntropia[TuboCalculado];
-
-			double ason = (*FCC[TuboCalculado] + *FCD[TuboCalculado]) / 2;
-			double Machx = fabs(FVelocity[TuboCalculado]) / ason;
-			if(Machx > 1) {
-				printf("Sonic condition in boundary: %d\n", FNumeroCC);
-				// double Machy = Machx / fabs(Machx) * sqrt
-				// ((pow(Machx, 2) + 2. / FGamma1) / (FGamma4 * pow(Machx, 2) - 1.));
-				// double asonido = (*FCC[TuboCalculado] + *FCD[TuboCalculado]) / 2;
-				// double Sonidoy = asonido * sqrt
-				// ((FGamma3 * pow(Machx, 2) + 1.) / (FGamma3 * pow(Machy, 2) + 1.));
-				//
-				// double Velocidady = Sonidoy * Machy;
-				ReduceSubsonicFlow(ason, FVelocity[TuboCalculado], FGamma);
-				*FCC[TuboCalculado] = ason + FGamma3 * FVelocity[TuboCalculado];
-				*FCD[TuboCalculado] = ason - FGamma3 * FVelocity[TuboCalculado];
-			}
-		} else {
-			for(int i = 0; i < FNumeroTubosCC; i++) {
-				corr_entropia = FTuboExtremo[i].Entropia / FEntropia[i];
-				*FCC[i] = (*FCC[i] + FGamma3 * FVelocity[i] * (corr_entropia - 1)) / corr_entropia;
-				*FCD[i] = *FCC[i] - FGamma1 * FVelocity[i];
-				FTuboExtremo[i].Entropia = FEntropia[i];
-				double Machx = fabs(*FCC[i] - *FCD[i]) / (*FCC[i] + *FCD[i]) * 2 / FGamma1;
-				if(Machx > 1) {
-					printf("Sonic condition in boundary: %d\n", FNumeroCC);
-					double Machy = Machx / fabs(Machx) * sqrt((pow2(Machx) + 2. / FGamma1) / (FGamma4 * pow2(Machx) - 1.));
-					double asonido = (*FCC[i] + *FCD[i]) / 2;
-					double Sonidoy = asonido * sqrt((FGamma3 * pow2(Machx) + 1.) / (FGamma3 * pow2(Machy) + 1.));
-
-					double Velocidady = Sonidoy * Machy;
-					*FCC[i] = Sonidoy + FGamma3 * Velocidady;
-					*FCD[i] = Sonidoy - FGamma3 * Velocidady;
-				}
-			}
-		}
-
-		// Transporte de especies quimicas.
-		for(int j = 0; j < FNumeroEspecies - FIntEGR; j++) {
-			FMasaEspecie[j] = 0.;
-		}
-		for(int i = 0; i < FNumeroTubosCC; i++) {
-			if(FVelocity[i] > 0.) {   // Flujo Saliente del tubo
-				FDensidad[i] = pow(((*FCC[i] + *FCD[i]) / 2) / FTuboExtremo[i].Entropia, FGamma4);
-				g = FDensidad[i] * FSeccionTubo[i] * FVelocity[i];
-				m = g * DeltaT;
-				MasaTotal += m;
-				for(int j = 0; j < FNumeroEspecies - FIntEGR; j++) {
-					FMasaEspecie[j] += FTuboExtremo[i].Pipe->GetFraccionMasicaCC(FIndiceCC[i], j) * m;
-				}
-			}
-		}
-
-		if(MasaTotal != 0) {
-			for(int j = 0; j < FNumeroEspecies - 2; j++) {
-				FFraccionMasicaEspecie[j] = FMasaEspecie[j] / MasaTotal;
-				FraccionMasicaAcum += FFraccionMasicaEspecie[j];
-			}
-			FFraccionMasicaEspecie[FNumeroEspecies - 2] = 1. - FraccionMasicaAcum;
-			if(FHayEGR)
-				FFraccionMasicaEspecie[FNumeroEspecies - 1] = FMasaEspecie[FNumeroEspecies - 1] / MasaTotal;
-		}
+		// GJM (Ghost Junction Method) is the production junction scheme (always on). It runs once
+		// per step (first call this step, DeltaT>0), updating every branch's Landa/Beta/Entropia
+		// and the junction species composition; later per-pipe calls this step just return.
+		// The legacy constant-pressure (Benson) junction solve was removed with the GJM+RoeM upgrade.
+		if(DeltaT > 1e-12)
+			CalculaCondicionContornoGJM(DeltaT);
 
 	} catch(exception & N) {
 		std::cout << "ERROR: TCCRamificacion::CalculaCondicionContorno en la condicion de contorno: " << FNumeroCC << std::endl;
