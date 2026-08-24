@@ -629,11 +629,9 @@ void TTubo::LeeDatosGeneralesTubo(const char *FileWAM, fpos_t &filepos) {
 			FTipoTransCal = nmPipaAdmision;
 			break;
 		default:
-			/* Never leave this indeterminate - the geometry reader branches on it and
-			 would desynchronise the parse of every following block. */
+			// Never leave indeterminate: the geometry reader branches on it and would desync the parse.
 			FTipoTransCal = nmTuboAdmision;
-			std::cout << "WARNING: Unknown duct type " << TipTC << " in pipe " << FNumeroTubo
-					  << ". Assuming a plain (intake) pipe." << std::endl;
+			std::cout << "WARNING: Unknown duct type " << TipTC << " in pipe " << FNumeroTubo << "; assuming intake pipe." << std::endl;
 			break;
 		}
 

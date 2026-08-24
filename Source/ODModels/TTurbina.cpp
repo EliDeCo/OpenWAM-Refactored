@@ -209,13 +209,10 @@ void TTurbina::ActualizaPropiedades(double TimeCalculo) {
 			const int MAX_ITER = 10000;
 			while(!Converge) {
 				if(++iterCount >= MAX_ITER) {
-					printf("ERROR: TTurbina %d: the 0-D energy-balance iteration did NOT converge in %d "
-						   "iterations (relative error = %e). This usually means the turbine volume (%e m^3) "
-						   "is too small for its mass flow, making the energy balance stiff. Increase the "
-						   "turbine's volume.\n", FNumeroTurbina, MAX_ITER, Error, FVolumen);
+					printf("ERROR: TTurbina %d: 0-D energy balance did not converge in %d iters (err %e); volume %e m^3 likely too small - increase it.\n",
+						   FNumeroTurbina, MAX_ITER, Error, FVolumen);
 					fflush(stdout);
-					throw Exception("TTurbina::ActualizaPropiedades: 0-D energy-balance iteration did not "
-									"converge (turbine volume likely too small for its through-flow)");
+					throw Exception("TTurbina: 0-D energy balance did not converge (turbine volume likely too small).");
 				}
 				H = 0.;
 				for(int i = 0; i < FNumeroUniones; i++) {

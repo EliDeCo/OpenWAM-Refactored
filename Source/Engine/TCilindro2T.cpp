@@ -319,12 +319,9 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 					FAcumMasaEGR += FCCValvulaAdm[i]->GetFraccionMasicaEspecie(FMotor->getSpeciesNumber() - 1) * FMasaValvAdm;
 
 				// --- Benson-Bradham: fresh-charge short-circuit ---
-				// A fraction FShortCircuitFraction of the fresh air DELIVERED by this port
-				// goes straight out the exhaust and is NOT trapped. It is deducted from the
-				// cylinder mass, but NOT from MasaAdmInstante or FAcumMasaPorAdm: the charge
-				// really was delivered by the port, so lambdaS (delivery ratio) is unchanged
-				// while the trapping and scavenging efficiencies drop, which is exactly the
-				// Bradham semantics. FShortCircuitFraction = 0 => pure Benson model.
+				// A fraction FShortCircuitFraction of the DELIVERED fresh air leaves straight out the
+				// exhaust untrapped: deducted from cylinder mass but NOT from delivery (lambdaS unchanged,
+				// trapping/scavenging efficiency drops). 0 => pure Benson model.
 				if(FShortCircuitFraction > 0. && FMasaValvAdm > 0.) {
 					int iAir = FMotor->getSpeciesNumber() - 2;   // fresh-air filler species
 					double dSC = FShortCircuitFraction * FCCValvulaAdm[i]->GetFraccionMasicaEspecie(iAir) * FMasaValvAdm;

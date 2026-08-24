@@ -116,10 +116,8 @@ namespace __cons {
 	/// perfect displacement up to this fraction, perfect mixing afterwards).
 	/// 0 = pure perfect mixing, 1 = pure perfect displacement.
 	const double FraccionBarridoPD = 0.5;
-	/// Benson-Bradham model: fraction of the DELIVERED fresh charge that is
-	/// short-circuited (enters through the scavenge ports and leaves straight out
-	/// the exhaust without being trapped). 0 = no short-circuit, i.e. the pure
-	/// Benson displacement-only model.
+	/// Benson-Bradham: fraction of DELIVERED fresh charge short-circuited out the exhaust untrapped.
+	/// 0 = no short-circuit (pure Benson).
 	const double ShortCircuitFractionBB = 0.0;
 }
 ;

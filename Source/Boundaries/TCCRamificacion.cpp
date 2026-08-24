@@ -401,10 +401,8 @@ void TCCRamificacion::CalculaCondicionContorno(double Time) {
 		DeltaT = FTiempoActual - FTiempoAnterior;
 		FTiempoAnterior = FTiempoActual;
 
-		// GJM (Ghost Junction Method) is the production junction scheme (always on). It runs once
-		// per step (first call this step, DeltaT>0), updating every branch's Landa/Beta/Entropia
-		// and the junction species composition; later per-pipe calls this step just return.
-		// The legacy constant-pressure (Benson) junction solve was removed with the GJM+RoeM upgrade.
+		// GJM (Ghost Junction Method): the production junction, run once per step (first call, DeltaT>0),
+		// updating every branch's Landa/Beta/Entropia + species; later per-pipe calls this step return.
 		if(DeltaT > 1e-12)
 			CalculaCondicionContornoGJM(DeltaT);
 

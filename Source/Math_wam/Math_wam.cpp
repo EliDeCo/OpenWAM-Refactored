@@ -235,17 +235,12 @@ Hermite_interp::Hermite_interp() :
 Hermite_interp::Hermite_interp(dVector &xv, dVector &yv) :
 	Base_interp(xv, &yv[0], 2), y2(xv.size()) {
 	// sety2() indexes y2[0]..y2[n-1] and reads xv[1]/yv[1], so it needs at least 2 points.
-	// An empty or single-point table (a valve lift/Cd, reed-valve or rotary-disc Cd table left
-	// blank in the input) otherwise dereferences empty vectors and segfaults silently at setup
-	// with no clue which element is at fault. Fail loud with a descriptive message instead.
+	// An empty/1-point table (a blank valve/reed/disc Cd table) segfaults in Hermite otherwise; fail loud.
 	if(xv.size() < 2 || yv.size() < 2) {
-		printf("ERROR: Hermite interpolation table has %d x-point(s) and %d y-point(s); at least 2 are "
-			   "required. An input data table (valve lift/Cd, reed-valve or rotary-disc Cd, etc.) is "
-			   "empty or has a single point. Check the table of the element being read just before this "
-			   "message and enter at least two points.\n", (int) xv.size(), (int) yv.size());
+		printf("ERROR: Hermite table needs >=2 points (has %d x, %d y) - the element read just above has an empty table.\n",
+			   (int) xv.size(), (int) yv.size());
 		fflush(stdout);
-		throw Exception("Hermite_interp: interpolation table has fewer than 2 points (empty or "
-						"single-point data table); populate the offending element's table.");
+		throw Exception("Hermite_interp: table has <2 points; populate the offending element's table.");
 	}
 	sety2(&xv[0], &yv[0]);
 }

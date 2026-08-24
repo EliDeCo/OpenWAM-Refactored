@@ -557,12 +557,9 @@ void TCilindro::AsignacionCC(TCondicionContorno **BC, int numCC) {
 			FAlphaAdmision = asin((dynamic_cast<TValvula4T*>(dynamic_cast<TCCCilindro*>
 								   (FCCValvulaAdm[0])->getValvula())->getDiametro() / 2.) / FMotor->getGeometria().DistanciaValvulas);
 		} else {
-			// The alpha angle above is defined from 4-stroke poppet-valve geometry
-			// (valve diameter / distance between valves) and has no 2-stroke port
-			// equivalent, so it is not computed for nm2T. But TCilindro2T's
-			// short-circuit model reads FAlphaEscape/FAlphaAdmision unconditionally,
-			// which meant 2-stroke cases used uninitialized memory. Zero disables the
-			// alpha-based short-circuit term rather than corrupting it.
+			// Alpha is 4-stroke poppet-valve geometry with no 2-stroke port equivalent, so it isn't
+			// computed for nm2T. TCilindro2T reads FAlphaEscape/FAlphaAdmision unconditionally, so zero
+			// them here (uninitialized otherwise) to disable the alpha short-circuit term.
 			FAlphaEscape = 0.;
 			FAlphaAdmision = 0.;
 		}

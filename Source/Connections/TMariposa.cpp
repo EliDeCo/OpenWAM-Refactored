@@ -81,18 +81,12 @@ void TMariposa::LeeDatosIniciales(const char *FileWAM, fpos_t &filepos, int nord
 
 	fscanf(fich, "%d %lf ", &FNumLev, &FDiametroRef);
 
-	// A Hermite interpolation of the discharge coefficient needs at least 2 (opening, Cd) points.
-	// An empty/degenerate table (FNumLev < 2) otherwise reaches Hermite_interp with empty vectors
-	// and segfaults silently at setup with no indication of which valve is at fault. Fail loud instead.
+	// Hermite Cd needs >=2 (opening, Cd) points; an empty table segfaults silently in Hermite otherwise.
 	if(FNumLev < 2) {
-		printf("ERROR: Throttle/butterfly valve (Mariposa) number %d has %d discharge-coefficient table "
-			   "point(s); it needs at least 2 (opening fraction vs Cd) for the Hermite interpolation. "
-			   "This valve is missing its Cd/lift data table -- open this valve in the UI and enter its "
-			   "discharge-coefficient table before running.\n", norden, FNumLev);
+		printf("ERROR: Butterfly valve (Mariposa) #%d needs a Cd table with >=2 points (has %d).\n", norden, FNumLev);
 		fflush(stdout);
 		fclose(fich);
-		throw Exception("TMariposa::LeeDatosIniciales: throttle/butterfly valve is missing its "
-						"discharge-coefficient (Cd vs opening) table (need at least 2 points).");
+		throw Exception("TMariposa: butterfly valve missing its Cd table (>=2 points).");
 	}
 
 	FLevantamiento.resize(FNumLev);

@@ -489,9 +489,8 @@ void DEFORMATIONS(double *V_cyl, double *DEFOR, double p_cyl, double CAD, double
 	double Msist = 0.;
 	/* Msist is the mass of the piston+piston axis+rings+ 0.33*connecting rod */
 
-	// The mechanical-deformation correction needs elasticity module + piston-pin diameter. When those
-	// ACT geometry inputs are not provided (0), the term divides by zero (and 0*inf = NaN, poisoning
-	// V_cyl). Deformation is a negligible um-level term; default it to zero when its inputs are unset.
+	// Deformation needs elasticity modulus + pin diameter; if unset (0) it divides by zero -> NaN V_cyl.
+	// It's a negligible um-level term, so default to zero when its inputs are missing.
 	if(C_ESteel <= 0. || Piston_Axis_D <= 0.) { *DEFOR = 0.; return; }
 	AVp = (PI * pow(Piston_D, 2.) / 4.) * C_Mech_Defor * (p_cyl / C_ESteel) * pow(Piston_D / Piston_Axis_D,
 			2.) * (Piston_Crown_H + Connecting_Rod_L + S / 2.);

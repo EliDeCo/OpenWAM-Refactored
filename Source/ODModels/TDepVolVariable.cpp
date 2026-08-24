@@ -130,10 +130,8 @@ void TDepVolVariable::ActualizaPropiedades(double TimeCalculo) {
 
 		} else if(FCalculoEspecies == nmCalculoSimple) {
 
-			// 2nd fraction arg is the FUEL fraction (0 in the simple model), NOT
-			// FFraccionMasicaEspecie[1] which is the fresh-air filler. Passing air
-			// as fuel yielded R~72 (gasoline) instead of 287, inflating plenum
-			// temperature ~4x. Matches TTubo/TCilindro (which pass 0).
+			// 2nd arg is the FUEL fraction (0 in the simple model), not FFraccionMasicaEspecie[1]
+			// (fresh-air filler). Passing air as fuel gave R~72 not 287 (~4x plenum temp). Match TTubo/TCilindro.
 			FRMezcla = CalculoSimpleRMezcla(FFraccionMasicaEspecie[0], 0., FCalculoGamma, nmMEP);
 			FCvMezcla = CalculoSimpleCvMezcla(__units::degCToK(FTemperature), FFraccionMasicaEspecie[0], 0.,
 											  FCalculoGamma, nmMEP);
