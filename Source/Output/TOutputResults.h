@@ -195,6 +195,9 @@ class TOutputResults {
 
 	void HeaderSpaceTimeResults(double thmax, double grmax, double agincr, int SpeciesNumber);
 
+	// Writes a human-readable column-label row (Angle + one label per element/cell) into a space-time file.
+	void WriteSTColumnHeader(FILE* f, const char* qty);
+
 	void PrintSpaceTimeResults(bool EngineBlock, double Theta, double SimulationDuration, TBloqueMotor **Engine,
 							   int SpeciesNumber);
 

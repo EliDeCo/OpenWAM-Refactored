@@ -3826,7 +3826,7 @@ void TOpenWAM::ManageOutput() {
 
 		Output->OutputInstantaneousResults(EXTERN, ThereIsDLL, EngineBlock, Theta, Engine[0], AcumulatedTime);
 
-		Output->WriteSpaceTime(EngineBlock, Engine[0], Run.CycleDuration);
+		Output->WriteSpaceTime(EngineBlock, Engine[0], (int) SimulationDuration);   // cycle count, not 720 deg
 
 		Output->PrintSpaceTimeResults(EngineBlock, Theta, Run.CycleDuration, Engine, SpeciesNumber);
 

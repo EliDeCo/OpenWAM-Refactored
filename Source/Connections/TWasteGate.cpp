@@ -111,6 +111,13 @@ void TWasteGate::LeeDatosIniciales(const char *FileWAM, fpos_t &filepos, int nor
 		throw Exception(N.what());
 
 	}
+
+	// A zero mass divides by zero in the FddX = (F - k*x - c*dx)/FMasa dynamics (NaN valve -> plenum crash).
+	// WAMer writes FMasa=0 when it re-serialises this line, so fail here with a clear message.
+	if(FMasa <= 0.) {
+		std::cout << "ERROR: WasteGate #" << norden << " has zero/negative mass - set a positive wastegate mass." << std::endl;
+		throw Exception("TWasteGate: wastegate mass must be > 0.");
+	}
 }
 
 //---------------------------------------------------------------------------

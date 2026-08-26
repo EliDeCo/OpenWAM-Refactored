@@ -1148,566 +1148,96 @@ void TOutputResults::DoSpaceTimeFiles(int SpeciesNumber) {
 	}
 }
 
+// Human-readable column-label row: "Angle(deg) <qty>_Cyl<n> ... <qty>_Plenum<n> ... <qty>_Pipe<n>_cell<k> ..."
+// (one column per cylinder/plenum, and one per cell of each pipe), matching the space-separated data rows.
+void TOutputResults::WriteSTColumnHeader(FILE* f, const char* qty) {
+	// Tab-separated column-label row so the file opens as a table (like the AVG/INS files).
+	fprintf(f, "Angle(deg)");
+	for(unsigned int j = 0; j < STCylinder.size(); ++j)
+		fprintf(f, "\t%s_Cyl%d", qty, STCylinder[j]->getNumeroCilindro());
+	for(unsigned int j = 0; j < STPlenum.size(); ++j)
+		fprintf(f, "\t%s_Plenum%d", qty, STPlenum[j]->getNumeroDeposito());
+	for(unsigned int j = 0; j < STPipe.size(); ++j)
+		for(int k = 0; k < STPipe[j]->getNin(); ++k)
+			fprintf(f, "\t%s_Pipe%d_cell%d", qty, STPipe[j]->getNumeroTubo(), k);
+}
+
 void TOutputResults::HeaderSpaceTimeResults(double thmax, double grmax, double agincr, int SpeciesNumber)
 
 {
-
+	// Only a tab-separated column-label row is written per file (no numeric metadata block),
+	// so the space-time files open directly as a table in Excel or a text editor.
+	(void)thmax; (void)grmax; (void)agincr;
 	for(unsigned int i = 0; i < FParameterSpaceTime.size(); ++i) {
 		switch(FParameterSpaceTime[i]) {
 		case 0: // PRESION
-			fprintf(FileOutPressure, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-			for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-				fprintf(FileOutPressure, "%d ", STCylinder[j]->getNumeroCilindro());
-			}
-			fprintf(FileOutPressure, "\n");
-			for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-				fprintf(FileOutPressure, "%d ", STPlenum[j]->getNumeroDeposito());
-			}
-			fprintf(FileOutPressure, "\n");
-			for(unsigned int j = 0; j < STPipe.size(); ++j) {
-				fprintf(FileOutPressure, "%d ", STPipe[j]->getNumeroTubo());
-			}
-			fprintf(FileOutPressure, "\n");
-			for(unsigned int j = 0; j < STPipe.size(); ++j) {
-				fprintf(FileOutPressure, "%d ", STPipe[j]->getNin());
-			}
-			fprintf(FileOutPressure, "\n%d", (int)((thmax - grmax) / agincr));
+			WriteSTColumnHeader(FileOutPressure, "P_bar");
 			break;
 		case 1: // TEMPERATURA
-			fprintf(FileOutTemp, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-			for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-				fprintf(FileOutTemp, "%d ", STCylinder[j]->getNumeroCilindro());
-			}
-			fprintf(FileOutTemp, "\n");
-			for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-				fprintf(FileOutTemp, "%d ", STPlenum[j]->getNumeroDeposito());
-			}
-			fprintf(FileOutTemp, "\n");
-			for(unsigned int j = 0; j < STPipe.size(); ++j) {
-				fprintf(FileOutTemp, "%d ", STPipe[j]->getNumeroTubo());
-			}
-			fprintf(FileOutTemp, "\n");
-			for(unsigned int j = 0; j < STPipe.size(); ++j) {
-				fprintf(FileOutTemp, "%d ", STPipe[j]->getNin());
-			}
-			fprintf(FileOutTemp, "\n%d", (int)((thmax - grmax) / agincr));
+			WriteSTColumnHeader(FileOutTemp, "T_degC");
 			break;
 		case 2: // VELOCIDAD
-			fprintf(FileOutVel, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-			for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-				fprintf(FileOutVel, "%d ", STCylinder[j]->getNumeroCilindro());
-			}
-			fprintf(FileOutVel, "\n");
-			for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-				fprintf(FileOutVel, "%d ", STPlenum[j]->getNumeroDeposito());
-			}
-			fprintf(FileOutVel, "\n");
-			for(unsigned int j = 0; j < STPipe.size(); ++j) {
-				fprintf(FileOutVel, "%d ", STPipe[j]->getNumeroTubo());
-			}
-			fprintf(FileOutVel, "\n");
-			for(unsigned int j = 0; j < STPipe.size(); ++j) {
-				fprintf(FileOutVel, "%d ", STPipe[j]->getNin());
-			}
-			fprintf(FileOutVel, "\n%d", (int)((thmax - grmax) / agincr));
+			WriteSTColumnHeader(FileOutVel, "Vel_m_s");
 			break;
 		case 3: // GASTO
-			fprintf(FileOutFlow, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-			for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-				fprintf(FileOutFlow, "%d ", STCylinder[j]->getNumeroCilindro());
-			}
-			fprintf(FileOutFlow, "\n");
-			for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-				fprintf(FileOutFlow, "%d ", STPlenum[j]->getNumeroDeposito());
-			}
-			fprintf(FileOutFlow, "\n");
-			for(unsigned int j = 0; j < STPipe.size(); ++j) {
-				fprintf(FileOutFlow, "%d ", STPipe[j]->getNumeroTubo());
-			}
-			fprintf(FileOutFlow, "\n");
-			for(unsigned int j = 0; j < STPipe.size(); ++j) {
-				fprintf(FileOutFlow, "%d ", STPipe[j]->getNin());
-			}
-			fprintf(FileOutFlow, "\n%d", (int)((thmax - grmax) / agincr));
+			WriteSTColumnHeader(FileOutFlow, "mdot_kg_s");
 			break;
 		case 4: // FRACCION MASICA DE ESPECIES
 			if(SpeciesNumber == 3) {
-				fprintf(FOutYBurntGas, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYFreshAir, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-					fprintf(FOutYBurntGas, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYFreshAir, "%d ", STCylinder[j]->getNumeroCilindro());
-				}
-				fprintf(FOutYBurntGas, "\n");
-				fprintf(FOutYFreshAir, "\n");
-				for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-					fprintf(FOutYBurntGas, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYFreshAir, "%d ", STPlenum[j]->getNumeroDeposito());
-				}
-				fprintf(FOutYBurntGas, "\n");
-				fprintf(FOutYFreshAir, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutYBurntGas, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYFreshAir, "%d ", STPipe[j]->getNumeroTubo());
-				}
-				fprintf(FOutYBurntGas, "\n");
-				fprintf(FOutYFreshAir, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutYBurntGas, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYFreshAir, "%d ", STPipe[j]->getNin());
-				}
-				fprintf(FOutYBurntGas, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYFreshAir, "\n%d", (int)((thmax - grmax) / agincr));
-
+				WriteSTColumnHeader(FOutYBurntGas, "Y_BurntGas");
+				WriteSTColumnHeader(FOutYFreshAir, "Y_FreshAir");
 			} else if(SpeciesNumber == 4) {
-				fprintf(FOutYBurntGas, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYFuel, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYFreshAir, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-					fprintf(FOutYBurntGas, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYFuel, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYFreshAir, "%d ", STCylinder[j]->getNumeroCilindro());
-				}
-				fprintf(FOutYBurntGas, "\n");
-				fprintf(FOutYFuel, "\n");
-				fprintf(FOutYFreshAir, "\n");
-				for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-					fprintf(FOutYBurntGas, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYFuel, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYFreshAir, "%d ", STPlenum[j]->getNumeroDeposito());
-				}
-				fprintf(FOutYBurntGas, "\n");
-				fprintf(FOutYFuel, "\n");
-				fprintf(FOutYFreshAir, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutYBurntGas, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYFuel, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYFreshAir, "%d ", STPipe[j]->getNumeroTubo());
-				}
-				fprintf(FOutYBurntGas, "\n");
-				fprintf(FOutYFuel, "\n");
-				fprintf(FOutYFreshAir, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutYBurntGas, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYFuel, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYFreshAir, "%d ", STPipe[j]->getNin());
-				}
-				fprintf(FOutYBurntGas, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYFuel, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYFreshAir, "\n%d", (int)((thmax - grmax) / agincr));
-
+				WriteSTColumnHeader(FOutYBurntGas, "Y_BurntGas");
+				WriteSTColumnHeader(FOutYFuel, "Y_Fuel");
+				WriteSTColumnHeader(FOutYFreshAir, "Y_FreshAir");
 			} else if(SpeciesNumber == 9) {
-				fprintf(FOutYO2, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYCO2, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYH2O, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYHC, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYSoot, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYNOx, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYCO, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYN2, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-					fprintf(FOutYO2, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYCO2, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYH2O, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYHC, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYSoot, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYNOx, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYCO, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYN2, "%d ", STCylinder[j]->getNumeroCilindro());
-				}
-				fprintf(FOutYO2, "\n");
-				fprintf(FOutYCO2, "\n");
-				fprintf(FOutYH2O, "\n");
-				fprintf(FOutYHC, "\n");
-				fprintf(FOutYSoot, "\n");
-				fprintf(FOutYNOx, "\n");
-				fprintf(FOutYCO, "\n");
-				fprintf(FOutYN2, "\n");
-				for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-					fprintf(FOutYO2, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYCO2, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYH2O, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYHC, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYSoot, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYNOx, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYCO, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYN2, "%d ", STPlenum[j]->getNumeroDeposito());
-				}
-				fprintf(FOutYO2, "\n");
-				fprintf(FOutYCO2, "\n");
-				fprintf(FOutYH2O, "\n");
-				fprintf(FOutYHC, "\n");
-				fprintf(FOutYSoot, "\n");
-				fprintf(FOutYNOx, "\n");
-				fprintf(FOutYCO, "\n");
-				fprintf(FOutYN2, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutYO2, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYCO2, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYH2O, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYHC, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYSoot, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYNOx, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYCO, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYN2, "%d ", STPipe[j]->getNumeroTubo());
-				}
-				fprintf(FOutYO2, "\n");
-				fprintf(FOutYCO2, "\n");
-				fprintf(FOutYH2O, "\n");
-				fprintf(FOutYHC, "\n");
-				fprintf(FOutYSoot, "\n");
-				fprintf(FOutYNOx, "\n");
-				fprintf(FOutYCO, "\n");
-				fprintf(FOutYN2, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutYO2, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYCO2, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYH2O, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYHC, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYSoot, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYNOx, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYCO, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYN2, "%d ", STPipe[j]->getNin());
-				}
-				fprintf(FOutYO2, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYCO2, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYH2O, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYHC, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYSoot, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYNOx, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYCO, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYN2, "\n%d", (int)((thmax - grmax) / agincr));
-
+				WriteSTColumnHeader(FOutYO2, "Y_O2");
+				WriteSTColumnHeader(FOutYCO2, "Y_CO2");
+				WriteSTColumnHeader(FOutYH2O, "Y_H2O");
+				WriteSTColumnHeader(FOutYHC, "Y_HC");
+				WriteSTColumnHeader(FOutYSoot, "Y_Soot");
+				WriteSTColumnHeader(FOutYNOx, "Y_NOx");
+				WriteSTColumnHeader(FOutYCO, "Y_CO");
+				WriteSTColumnHeader(FOutYN2, "Y_N2");
 			} else if(SpeciesNumber == 10) {
-				fprintf(FOutYO2, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYCO2, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYH2O, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYHC, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYSoot, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYNOx, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYCO, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYFuel, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutYN2, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-					fprintf(FOutYO2, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYCO2, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYH2O, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYHC, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYSoot, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYNOx, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYCO, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYFuel, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutYN2, "%d ", STCylinder[j]->getNumeroCilindro());
-				}
-				fprintf(FOutYO2, "\n");
-				fprintf(FOutYCO2, "\n");
-				fprintf(FOutYH2O, "\n");
-				fprintf(FOutYHC, "\n");
-				fprintf(FOutYSoot, "\n");
-				fprintf(FOutYNOx, "\n");
-				fprintf(FOutYCO, "\n");
-				fprintf(FOutYFuel, "\n");
-				fprintf(FOutYN2, "\n");
-				for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-					fprintf(FOutYO2, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYCO2, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYH2O, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYHC, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYSoot, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYNOx, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYCO, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYFuel, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutYN2, "%d ", STPlenum[j]->getNumeroDeposito());
-				}
-				fprintf(FOutYO2, "\n");
-				fprintf(FOutYCO2, "\n");
-				fprintf(FOutYH2O, "\n");
-				fprintf(FOutYHC, "\n");
-				fprintf(FOutYSoot, "\n");
-				fprintf(FOutYNOx, "\n");
-				fprintf(FOutYCO, "\n");
-				fprintf(FOutYFuel, "\n");
-				fprintf(FOutYN2, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutYO2, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYCO2, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYH2O, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYHC, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYSoot, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYNOx, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYCO, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYFuel, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutYN2, "%d ", STPipe[j]->getNumeroTubo());
-				}
-				fprintf(FOutYO2, "\n");
-				fprintf(FOutYCO2, "\n");
-				fprintf(FOutYH2O, "\n");
-				fprintf(FOutYHC, "\n");
-				fprintf(FOutYSoot, "\n");
-				fprintf(FOutYNOx, "\n");
-				fprintf(FOutYCO, "\n");
-				fprintf(FOutYFuel, "\n");
-				fprintf(FOutYN2, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutYO2, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYCO2, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYH2O, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYHC, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYSoot, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYNOx, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYCO, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYFuel, "%d ", STPipe[j]->getNin());
-					fprintf(FOutYN2, "%d ", STPipe[j]->getNin());
-				}
-				fprintf(FOutYO2, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYCO2, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYH2O, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYHC, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYSoot, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYNOx, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYCO, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYFuel, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutYN2, "\n%d", (int)((thmax - grmax) / agincr));
+				WriteSTColumnHeader(FOutYO2, "Y_O2");
+				WriteSTColumnHeader(FOutYCO2, "Y_CO2");
+				WriteSTColumnHeader(FOutYH2O, "Y_H2O");
+				WriteSTColumnHeader(FOutYHC, "Y_HC");
+				WriteSTColumnHeader(FOutYSoot, "Y_Soot");
+				WriteSTColumnHeader(FOutYNOx, "Y_NOx");
+				WriteSTColumnHeader(FOutYCO, "Y_CO");
+				WriteSTColumnHeader(FOutYFuel, "Y_Fuel");
+				WriteSTColumnHeader(FOutYN2, "Y_N2");
 			}
 			break;
 		case 5: // GASTO MASICO DE ESPECIES
 			if(SpeciesNumber == 3) {
-				fprintf(FOutFlowBurntGas, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowFreshAir, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-					fprintf(FOutFlowBurntGas, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowFreshAir, "%d ", STCylinder[j]->getNumeroCilindro());
-				}
-				fprintf(FOutFlowBurntGas, "\n");
-				fprintf(FOutFlowFreshAir, "\n");
-				for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-					fprintf(FOutFlowBurntGas, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowFreshAir, "%d ", STPlenum[j]->getNumeroDeposito());
-				}
-				fprintf(FOutFlowBurntGas, "\n");
-				fprintf(FOutFlowFreshAir, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutFlowBurntGas, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowFreshAir, "%d ", STPipe[j]->getNumeroTubo());
-				}
-				fprintf(FOutFlowBurntGas, "\n");
-				fprintf(FOutFlowFreshAir, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutFlowBurntGas, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowFreshAir, "%d ", STPipe[j]->getNin());
-				}
-				fprintf(FOutFlowBurntGas, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowFreshAir, "\n%d", (int)((thmax - grmax) / agincr));
-
+				WriteSTColumnHeader(FOutFlowBurntGas, "mdot_BurntGas");
+				WriteSTColumnHeader(FOutFlowFreshAir, "mdot_FreshAir");
 			} else if(SpeciesNumber == 4) {
-				fprintf(FOutFlowBurntGas, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowFuel, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowFreshAir, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-					fprintf(FOutFlowBurntGas, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowFuel, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowFreshAir, "%d ", STCylinder[j]->getNumeroCilindro());
-				}
-				fprintf(FOutFlowBurntGas, "\n");
-				fprintf(FOutFlowFuel, "\n");
-				fprintf(FOutFlowFreshAir, "\n");
-				for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-					fprintf(FOutFlowBurntGas, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowFuel, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowFreshAir, "%d ", STPlenum[j]->getNumeroDeposito());
-				}
-				fprintf(FOutFlowBurntGas, "\n");
-				fprintf(FOutFlowFuel, "\n");
-				fprintf(FOutFlowFreshAir, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutFlowBurntGas, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowFuel, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowFreshAir, "%d ", STPipe[j]->getNumeroTubo());
-				}
-				fprintf(FOutFlowBurntGas, "\n");
-				fprintf(FOutFlowFuel, "\n");
-				fprintf(FOutFlowFreshAir, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutFlowBurntGas, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowFuel, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowFreshAir, "%d ", STPipe[j]->getNin());
-				}
-				fprintf(FOutFlowBurntGas, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowFuel, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowFreshAir, "\n%d", (int)((thmax - grmax) / agincr));
-
+				WriteSTColumnHeader(FOutFlowBurntGas, "mdot_BurntGas");
+				WriteSTColumnHeader(FOutFlowFuel, "mdot_Fuel");
+				WriteSTColumnHeader(FOutFlowFreshAir, "mdot_FreshAir");
 			} else if(SpeciesNumber == 9) {
-				fprintf(FOutFlowO2, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowCO2, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowH2O, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowHC, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowSoot, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowNOx, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowCO, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowN2, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-					fprintf(FOutFlowO2, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowCO2, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowH2O, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowHC, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowSoot, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowNOx, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowCO, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowN2, "%d ", STCylinder[j]->getNumeroCilindro());
-				}
-				fprintf(FOutFlowO2, "\n");
-				fprintf(FOutFlowCO2, "\n");
-				fprintf(FOutFlowH2O, "\n");
-				fprintf(FOutFlowHC, "\n");
-				fprintf(FOutFlowSoot, "\n");
-				fprintf(FOutFlowNOx, "\n");
-				fprintf(FOutFlowCO, "\n");
-				fprintf(FOutFlowN2, "\n");
-				for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-					fprintf(FOutFlowO2, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowCO2, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowH2O, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowHC, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowSoot, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowNOx, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowCO, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowN2, "%d ", STPlenum[j]->getNumeroDeposito());
-				}
-				fprintf(FOutFlowO2, "\n");
-				fprintf(FOutFlowCO2, "\n");
-				fprintf(FOutFlowH2O, "\n");
-				fprintf(FOutFlowHC, "\n");
-				fprintf(FOutFlowSoot, "\n");
-				fprintf(FOutFlowNOx, "\n");
-				fprintf(FOutFlowCO, "\n");
-				fprintf(FOutFlowN2, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutFlowO2, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowCO2, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowH2O, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowHC, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowSoot, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowNOx, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowCO, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowN2, "%d ", STPipe[j]->getNumeroTubo());
-				}
-				fprintf(FOutFlowO2, "\n");
-				fprintf(FOutFlowCO2, "\n");
-				fprintf(FOutFlowH2O, "\n");
-				fprintf(FOutFlowHC, "\n");
-				fprintf(FOutFlowSoot, "\n");
-				fprintf(FOutFlowNOx, "\n");
-				fprintf(FOutFlowCO, "\n");
-				fprintf(FOutFlowN2, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutFlowO2, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowCO2, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowH2O, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowHC, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowSoot, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowNOx, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowCO, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowN2, "%d ", STPipe[j]->getNin());
-				}
-				fprintf(FOutFlowO2, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowCO2, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowH2O, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowHC, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowSoot, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowNOx, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowCO, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowN2, "\n%d", (int)((thmax - grmax) / agincr));
-
+				WriteSTColumnHeader(FOutFlowO2, "mdot_O2");
+				WriteSTColumnHeader(FOutFlowCO2, "mdot_CO2");
+				WriteSTColumnHeader(FOutFlowH2O, "mdot_H2O");
+				WriteSTColumnHeader(FOutFlowHC, "mdot_HC");
+				WriteSTColumnHeader(FOutFlowSoot, "mdot_Soot");
+				WriteSTColumnHeader(FOutFlowNOx, "mdot_NOx");
+				WriteSTColumnHeader(FOutFlowCO, "mdot_CO");
+				WriteSTColumnHeader(FOutFlowN2, "mdot_N2");
 			} else if(SpeciesNumber == 10) {
-				fprintf(FOutFlowO2, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowCO2, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowH2O, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowHC, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowSoot, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowNOx, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowCO, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowFuel, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				fprintf(FOutFlowN2, "%d %d %d\n", STCylinder.size(), STPlenum.size(), STPipe.size());
-				for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-					fprintf(FOutFlowO2, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowCO2, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowH2O, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowHC, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowSoot, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowNOx, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowCO, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowFuel, "%d ", STCylinder[j]->getNumeroCilindro());
-					fprintf(FOutFlowN2, "%d ", STCylinder[j]->getNumeroCilindro());
-				}
-				fprintf(FOutFlowO2, "\n");
-				fprintf(FOutFlowCO2, "\n");
-				fprintf(FOutFlowH2O, "\n");
-				fprintf(FOutFlowHC, "\n");
-				fprintf(FOutFlowSoot, "\n");
-				fprintf(FOutFlowNOx, "\n");
-				fprintf(FOutFlowCO, "\n");
-				fprintf(FOutFlowFuel, "\n");
-				fprintf(FOutFlowN2, "\n");
-				for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-					fprintf(FOutFlowO2, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowCO2, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowH2O, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowHC, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowSoot, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowNOx, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowCO, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowFuel, "%d ", STPlenum[j]->getNumeroDeposito());
-					fprintf(FOutFlowN2, "%d ", STPlenum[j]->getNumeroDeposito());
-				}
-				fprintf(FOutFlowO2, "\n");
-				fprintf(FOutFlowCO2, "\n");
-				fprintf(FOutFlowH2O, "\n");
-				fprintf(FOutFlowHC, "\n");
-				fprintf(FOutFlowSoot, "\n");
-				fprintf(FOutFlowNOx, "\n");
-				fprintf(FOutFlowCO, "\n");
-				fprintf(FOutFlowFuel, "\n");
-				fprintf(FOutFlowN2, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutFlowO2, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowCO2, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowH2O, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowHC, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowSoot, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowNOx, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowCO, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowFuel, "%d ", STPipe[j]->getNumeroTubo());
-					fprintf(FOutFlowN2, "%d ", STPipe[j]->getNumeroTubo());
-				}
-				fprintf(FOutFlowO2, "\n");
-				fprintf(FOutFlowCO2, "\n");
-				fprintf(FOutFlowH2O, "\n");
-				fprintf(FOutFlowHC, "\n");
-				fprintf(FOutFlowSoot, "\n");
-				fprintf(FOutFlowNOx, "\n");
-				fprintf(FOutFlowCO, "\n");
-				fprintf(FOutFlowFuel, "\n");
-				fprintf(FOutFlowN2, "\n");
-				for(unsigned int j = 0; j < STPipe.size(); ++j) {
-					fprintf(FOutFlowO2, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowCO2, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowH2O, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowHC, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowSoot, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowNOx, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowCO, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowFuel, "%d ", STPipe[j]->getNin());
-					fprintf(FOutFlowN2, "%d ", STPipe[j]->getNin());
-				}
-				fprintf(FOutFlowO2, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowCO2, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowH2O, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowHC, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowSoot, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowNOx, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowCO, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowFuel, "\n%d", (int)((thmax - grmax) / agincr));
-				fprintf(FOutFlowN2, "\n%d", (int)((thmax - grmax) / agincr));
+				WriteSTColumnHeader(FOutFlowO2, "mdot_O2");
+				WriteSTColumnHeader(FOutFlowCO2, "mdot_CO2");
+				WriteSTColumnHeader(FOutFlowH2O, "mdot_H2O");
+				WriteSTColumnHeader(FOutFlowHC, "mdot_HC");
+				WriteSTColumnHeader(FOutFlowSoot, "mdot_Soot");
+				WriteSTColumnHeader(FOutFlowNOx, "mdot_NOx");
+				WriteSTColumnHeader(FOutFlowCO, "mdot_CO");
+				WriteSTColumnHeader(FOutFlowFuel, "mdot_Fuel");
+				WriteSTColumnHeader(FOutFlowN2, "mdot_N2");
 			}
 			break;
 		}
@@ -1737,65 +1267,65 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 			case 0:
 				fprintf(FileOutPressure, "\n%g", pasafloat);
 				for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-					fprintf(FileOutPressure, " %g", STCylinder[j]->getPressure());
+					fprintf(FileOutPressure, "\t%g", STCylinder[j]->getPressure());
 				}
 				for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-					fprintf(FileOutPressure, " %g", STPlenum[j]->getPressure());
+					fprintf(FileOutPressure, "\t%g", STPlenum[j]->getPressure());
 				}
 				for(unsigned int j = 0; j < STPipe.size(); ++j) {
 					for(int k = 0; k < STPipe[j]->getNin(); ++k) {
-						fprintf(FileOutPressure, " %g", STPipe[j]->GetPresion(k));
+						fprintf(FileOutPressure, "\t%g", STPipe[j]->GetPresion(k));
 					}
 				}
 				break;
 			case 1:
 				fprintf(FileOutTemp, "\n%g", pasafloat);
 				for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-					fprintf(FileOutTemp, " %g", STCylinder[j]->getTemperature());
+					fprintf(FileOutTemp, "\t%g", STCylinder[j]->getTemperature());
 				}
 				for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-					fprintf(FileOutTemp, " %g", STPlenum[j]->getTemperature());
+					fprintf(FileOutTemp, "\t%g", STPlenum[j]->getTemperature());
 				}
 				for(unsigned int j = 0; j < STPipe.size(); ++j) {
 					for(int k = 0; k < STPipe[j]->getNin(); ++k) {
 						double temp = __units::KTodegC(pow2(STPipe[j]->GetAsonido(k) * __cons::ARef) / (STPipe[j]->GetGamma(
 														   k) * STPipe[j]->GetRMezcla(k)));
-						fprintf(FileOutTemp, " %g", temp);
+						fprintf(FileOutTemp, "\t%g", temp);
 					}
 				}
 				break;
 			case 2:
 				fprintf(FileOutVel, "\n%g", pasafloat);
 				for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-					fprintf(FileOutVel, " %g", 0.0);
+					fprintf(FileOutVel, "\t%g", 0.0);
 				}
 				for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-					fprintf(FileOutVel, " %g", 0.0);
+					fprintf(FileOutVel, "\t%g", 0.0);
 				}
 				for(unsigned int j = 0; j < STPipe.size(); ++j) {
 					for(int k = 0; k < STPipe[j]->getNin(); ++k) {
 						double vel = STPipe[j]->GetVelocidad(k) * __cons::ARef;
-						fprintf(FileOutVel, " %g", vel);
+						fprintf(FileOutVel, "\t%g", vel);
 					}
 				}
 				break;
 			case 3:
 				fprintf(FileOutFlow, "\n%g", pasafloat);
 				for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-					fprintf(FileOutFlow, " %g", 0.0);
+					fprintf(FileOutFlow, "\t%g", 0.0);
 				}
 				for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-					fprintf(FileOutFlow, " %g", 0.0);
+					fprintf(FileOutFlow, "\t%g", 0.0);
 				}
 				for(unsigned int j = 0; j < STPipe.size(); ++j) {
 					for(int k = 0; k < STPipe[j]->getNin(); ++k) {
 						if(STPipe[j]->getFormulacionLeyes() == nmConArea) {
-							fprintf(FileOutFlow, " %g", STPipe[j]->GetU0(1, k));
+							fprintf(FileOutFlow, "\t%g", STPipe[j]->GetU0(1, k));
 						} else {
 							double massflow = __units::BarToPa(STPipe[j]->GetPresion(k)) / pow2(STPipe[j]->GetAsonido(
 												  k) * __cons::ARef) * STPipe[j]->GetGamma(k) * STPipe[j]->GetVelocidad(k) * __cons::ARef * __geom::Circle_area(
 												  STPipe[j]->GetDiametro(k));
-							fprintf(FileOutFlow, " %g", massflow);
+							fprintf(FileOutFlow, "\t%g", massflow);
 						}
 					}
 				}
@@ -1805,17 +1335,17 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 					fprintf(FOutYBurntGas, "\n%g", pasafloat);
 					fprintf(FOutYFreshAir, "\n%g", pasafloat);
 					for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-						fprintf(FOutYBurntGas, " %g", STCylinder[j]->GetFraccionMasicaEspecie(0));
-						fprintf(FOutYFreshAir, " %g", STCylinder[j]->GetFraccionMasicaEspecie(1));
+						fprintf(FOutYBurntGas, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(0));
+						fprintf(FOutYFreshAir, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(1));
 					}
 					for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-						fprintf(FOutYBurntGas, " %g", STPlenum[j]->GetFraccionMasicaEspecie(0));
-						fprintf(FOutYFreshAir, " %g", STPlenum[j]->GetFraccionMasicaEspecie(1));
+						fprintf(FOutYBurntGas, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(0));
+						fprintf(FOutYFreshAir, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(1));
 					}
 					for(unsigned int j = 0; j < STPipe.size(); ++j) {
 						for(int k = 0; k < STPipe[j]->getNin(); ++k) {
-							fprintf(FOutYBurntGas, " %g", STPipe[j]->GetFraccionMasica(k, 0));
-							fprintf(FOutYFreshAir, " %g", STPipe[j]->GetFraccionMasica(k, 1));
+							fprintf(FOutYBurntGas, "\t%g", STPipe[j]->GetFraccionMasica(k, 0));
+							fprintf(FOutYFreshAir, "\t%g", STPipe[j]->GetFraccionMasica(k, 1));
 						}
 					}
 
@@ -1824,20 +1354,20 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 					fprintf(FOutYFuel, "\n%g", pasafloat);
 					fprintf(FOutYFreshAir, "\n%g", pasafloat);
 					for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-						fprintf(FOutYBurntGas, " %g", STCylinder[j]->GetFraccionMasicaEspecie(0));
-						fprintf(FOutYFuel, " %g", STCylinder[j]->GetFraccionMasicaEspecie(1));
-						fprintf(FOutYFreshAir, " %g", STCylinder[j]->GetFraccionMasicaEspecie(2));
+						fprintf(FOutYBurntGas, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(0));
+						fprintf(FOutYFuel, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(1));
+						fprintf(FOutYFreshAir, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(2));
 					}
 					for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-						fprintf(FOutYBurntGas, " %g", STPlenum[j]->GetFraccionMasicaEspecie(0));
-						fprintf(FOutYFuel, " %g", STPlenum[j]->GetFraccionMasicaEspecie(1));
-						fprintf(FOutYFreshAir, " %g", STPlenum[j]->GetFraccionMasicaEspecie(2));
+						fprintf(FOutYBurntGas, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(0));
+						fprintf(FOutYFuel, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(1));
+						fprintf(FOutYFreshAir, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(2));
 					}
 					for(unsigned int j = 0; j < STPipe.size(); ++j) {
 						for(int k = 0; k < STPipe[j]->getNin(); ++k) {
-							fprintf(FOutYBurntGas, " %g", STPipe[j]->GetFraccionMasica(k, 0));
-							fprintf(FOutYFuel, " %g", STPipe[j]->GetFraccionMasica(k, 1));
-							fprintf(FOutYFreshAir, " %g", STPipe[j]->GetFraccionMasica(k, 2));
+							fprintf(FOutYBurntGas, "\t%g", STPipe[j]->GetFraccionMasica(k, 0));
+							fprintf(FOutYFuel, "\t%g", STPipe[j]->GetFraccionMasica(k, 1));
+							fprintf(FOutYFreshAir, "\t%g", STPipe[j]->GetFraccionMasica(k, 2));
 						}
 					}
 
@@ -1851,35 +1381,35 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 					fprintf(FOutYCO, "\n%g", pasafloat);
 					fprintf(FOutYN2, "\n%g", pasafloat);
 					for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-						fprintf(FOutYO2, " %g", STCylinder[j]->GetFraccionMasicaEspecie(0));
-						fprintf(FOutYCO2, " %g", STCylinder[j]->GetFraccionMasicaEspecie(1));
-						fprintf(FOutYH2O, " %g", STCylinder[j]->GetFraccionMasicaEspecie(2));
-						fprintf(FOutYHC, " %g", STCylinder[j]->GetFraccionMasicaEspecie(3));
-						fprintf(FOutYSoot, " %g", STCylinder[j]->GetFraccionMasicaEspecie(4));
-						fprintf(FOutYNOx, " %g", STCylinder[j]->GetFraccionMasicaEspecie(5));
-						fprintf(FOutYCO, " %g", STCylinder[j]->GetFraccionMasicaEspecie(6));
-						fprintf(FOutYN2, " %g", STCylinder[j]->GetFraccionMasicaEspecie(7));
+						fprintf(FOutYO2, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(0));
+						fprintf(FOutYCO2, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(1));
+						fprintf(FOutYH2O, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(2));
+						fprintf(FOutYHC, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(3));
+						fprintf(FOutYSoot, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(4));
+						fprintf(FOutYNOx, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(5));
+						fprintf(FOutYCO, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(6));
+						fprintf(FOutYN2, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(7));
 					}
 					for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-						fprintf(FOutYO2, " %g", STPlenum[j]->GetFraccionMasicaEspecie(0));
-						fprintf(FOutYCO2, " %g", STPlenum[j]->GetFraccionMasicaEspecie(1));
-						fprintf(FOutYH2O, " %g", STPlenum[j]->GetFraccionMasicaEspecie(2));
-						fprintf(FOutYHC, " %g", STPlenum[j]->GetFraccionMasicaEspecie(3));
-						fprintf(FOutYSoot, " %g", STPlenum[j]->GetFraccionMasicaEspecie(4));
-						fprintf(FOutYNOx, " %g", STPlenum[j]->GetFraccionMasicaEspecie(5));
-						fprintf(FOutYCO, " %g", STPlenum[j]->GetFraccionMasicaEspecie(6));
-						fprintf(FOutYN2, " %g", STPlenum[j]->GetFraccionMasicaEspecie(7));
+						fprintf(FOutYO2, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(0));
+						fprintf(FOutYCO2, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(1));
+						fprintf(FOutYH2O, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(2));
+						fprintf(FOutYHC, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(3));
+						fprintf(FOutYSoot, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(4));
+						fprintf(FOutYNOx, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(5));
+						fprintf(FOutYCO, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(6));
+						fprintf(FOutYN2, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(7));
 					}
 					for(unsigned int j = 0; j < STPipe.size(); ++j) {
 						for(int k = 0; k < STPipe[j]->getNin(); ++k) {
-							fprintf(FOutYO2, " %g", STPipe[j]->GetFraccionMasica(k, 0));
-							fprintf(FOutYCO2, " %g", STPipe[j]->GetFraccionMasica(k, 1));
-							fprintf(FOutYH2O, " %g", STPipe[j]->GetFraccionMasica(k, 2));
-							fprintf(FOutYHC, " %g", STPipe[j]->GetFraccionMasica(k, 3));
-							fprintf(FOutYSoot, " %g", STPipe[j]->GetFraccionMasica(k, 4));
-							fprintf(FOutYNOx, " %g", STPipe[j]->GetFraccionMasica(k, 5));
-							fprintf(FOutYCO, " %g", STPipe[j]->GetFraccionMasica(k, 6));
-							fprintf(FOutYN2, " %g", STPipe[j]->GetFraccionMasica(k, 7));
+							fprintf(FOutYO2, "\t%g", STPipe[j]->GetFraccionMasica(k, 0));
+							fprintf(FOutYCO2, "\t%g", STPipe[j]->GetFraccionMasica(k, 1));
+							fprintf(FOutYH2O, "\t%g", STPipe[j]->GetFraccionMasica(k, 2));
+							fprintf(FOutYHC, "\t%g", STPipe[j]->GetFraccionMasica(k, 3));
+							fprintf(FOutYSoot, "\t%g", STPipe[j]->GetFraccionMasica(k, 4));
+							fprintf(FOutYNOx, "\t%g", STPipe[j]->GetFraccionMasica(k, 5));
+							fprintf(FOutYCO, "\t%g", STPipe[j]->GetFraccionMasica(k, 6));
+							fprintf(FOutYN2, "\t%g", STPipe[j]->GetFraccionMasica(k, 7));
 						}
 					}
 
@@ -1894,38 +1424,38 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 					fprintf(FOutYFuel, "\n%g", pasafloat);
 					fprintf(FOutYN2, "\n%g", pasafloat);
 					for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-						fprintf(FOutYO2, " %g", STCylinder[j]->GetFraccionMasicaEspecie(0));
-						fprintf(FOutYCO2, " %g", STCylinder[j]->GetFraccionMasicaEspecie(1));
-						fprintf(FOutYH2O, " %g", STCylinder[j]->GetFraccionMasicaEspecie(2));
-						fprintf(FOutYHC, " %g", STCylinder[j]->GetFraccionMasicaEspecie(3));
-						fprintf(FOutYSoot, " %g", STCylinder[j]->GetFraccionMasicaEspecie(4));
-						fprintf(FOutYNOx, " %g", STCylinder[j]->GetFraccionMasicaEspecie(5));
-						fprintf(FOutYCO, " %g", STCylinder[j]->GetFraccionMasicaEspecie(6));
-						fprintf(FOutYFuel, " %g", STCylinder[j]->GetFraccionMasicaEspecie(7));
-						fprintf(FOutYN2, " %g", STCylinder[j]->GetFraccionMasicaEspecie(8));
+						fprintf(FOutYO2, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(0));
+						fprintf(FOutYCO2, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(1));
+						fprintf(FOutYH2O, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(2));
+						fprintf(FOutYHC, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(3));
+						fprintf(FOutYSoot, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(4));
+						fprintf(FOutYNOx, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(5));
+						fprintf(FOutYCO, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(6));
+						fprintf(FOutYFuel, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(7));
+						fprintf(FOutYN2, "\t%g", STCylinder[j]->GetFraccionMasicaEspecie(8));
 					}
 					for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-						fprintf(FOutYO2, " %g", STPlenum[j]->GetFraccionMasicaEspecie(0));
-						fprintf(FOutYCO2, " %g", STPlenum[j]->GetFraccionMasicaEspecie(1));
-						fprintf(FOutYH2O, " %g", STPlenum[j]->GetFraccionMasicaEspecie(2));
-						fprintf(FOutYHC, " %g", STPlenum[j]->GetFraccionMasicaEspecie(3));
-						fprintf(FOutYSoot, " %g", STPlenum[j]->GetFraccionMasicaEspecie(4));
-						fprintf(FOutYNOx, " %g", STPlenum[j]->GetFraccionMasicaEspecie(5));
-						fprintf(FOutYCO, " %g", STPlenum[j]->GetFraccionMasicaEspecie(6));
-						fprintf(FOutYFuel, " %g", STPlenum[j]->GetFraccionMasicaEspecie(7));
-						fprintf(FOutYN2, " %g", STPlenum[j]->GetFraccionMasicaEspecie(8));
+						fprintf(FOutYO2, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(0));
+						fprintf(FOutYCO2, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(1));
+						fprintf(FOutYH2O, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(2));
+						fprintf(FOutYHC, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(3));
+						fprintf(FOutYSoot, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(4));
+						fprintf(FOutYNOx, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(5));
+						fprintf(FOutYCO, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(6));
+						fprintf(FOutYFuel, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(7));
+						fprintf(FOutYN2, "\t%g", STPlenum[j]->GetFraccionMasicaEspecie(8));
 					}
 					for(unsigned int j = 0; j < STPipe.size(); ++j) {
 						for(int k = 0; k < STPipe[j]->getNin(); ++k) {
-							fprintf(FOutYO2, " %g", STPipe[j]->GetFraccionMasica(k, 0));
-							fprintf(FOutYCO2, " %g", STPipe[j]->GetFraccionMasica(k, 1));
-							fprintf(FOutYH2O, " %g", STPipe[j]->GetFraccionMasica(k, 2));
-							fprintf(FOutYHC, " %g", STPipe[j]->GetFraccionMasica(k, 3));
-							fprintf(FOutYSoot, " %g", STPipe[j]->GetFraccionMasica(k, 4));
-							fprintf(FOutYNOx, " %g", STPipe[j]->GetFraccionMasica(k, 5));
-							fprintf(FOutYCO, " %g", STPipe[j]->GetFraccionMasica(k, 6));
-							fprintf(FOutYFuel, " %g", STPipe[j]->GetFraccionMasica(k, 7));
-							fprintf(FOutYN2, " %g", STPipe[j]->GetFraccionMasica(k, 8));
+							fprintf(FOutYO2, "\t%g", STPipe[j]->GetFraccionMasica(k, 0));
+							fprintf(FOutYCO2, "\t%g", STPipe[j]->GetFraccionMasica(k, 1));
+							fprintf(FOutYH2O, "\t%g", STPipe[j]->GetFraccionMasica(k, 2));
+							fprintf(FOutYHC, "\t%g", STPipe[j]->GetFraccionMasica(k, 3));
+							fprintf(FOutYSoot, "\t%g", STPipe[j]->GetFraccionMasica(k, 4));
+							fprintf(FOutYNOx, "\t%g", STPipe[j]->GetFraccionMasica(k, 5));
+							fprintf(FOutYCO, "\t%g", STPipe[j]->GetFraccionMasica(k, 6));
+							fprintf(FOutYFuel, "\t%g", STPipe[j]->GetFraccionMasica(k, 7));
+							fprintf(FOutYN2, "\t%g", STPipe[j]->GetFraccionMasica(k, 8));
 						}
 					}
 				}
@@ -1936,12 +1466,12 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 					fprintf(FOutFlowBurntGas, "\n%g", pasafloat);
 					fprintf(FOutFlowFreshAir, "\n%g", pasafloat);
 					for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-						fprintf(FOutFlowBurntGas, " %g", 0.0);
-						fprintf(FOutFlowFreshAir, " %g", 0.0);
+						fprintf(FOutFlowBurntGas, "\t%g", 0.0);
+						fprintf(FOutFlowFreshAir, "\t%g", 0.0);
 					}
 					for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-						fprintf(FOutFlowBurntGas, " %g", 0.0);
-						fprintf(FOutFlowFreshAir, " %g", 0.0);
+						fprintf(FOutFlowBurntGas, "\t%g", 0.0);
+						fprintf(FOutFlowFreshAir, "\t%g", 0.0);
 					}
 					for(unsigned int j = 0; j < STPipe.size(); ++j) {
 						for(int k = 0; k < STPipe[j]->getNin(); ++k) {
@@ -1952,8 +1482,8 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 										   STPipe[j]->GetGamma(k) * STPipe[j]->GetVelocidad(k) * __cons::ARef * __geom::Circle_area(
 											   STPipe[j]->GetDiametro(k));
 							}
-							fprintf(FOutFlowBurntGas, " %g", STPipe[j]->GetFraccionMasica(k, 0) * massflow);
-							fprintf(FOutFlowFreshAir, " %g", STPipe[j]->GetFraccionMasica(k, 1) * massflow);
+							fprintf(FOutFlowBurntGas, "\t%g", STPipe[j]->GetFraccionMasica(k, 0) * massflow);
+							fprintf(FOutFlowFreshAir, "\t%g", STPipe[j]->GetFraccionMasica(k, 1) * massflow);
 						}
 					}
 
@@ -1962,14 +1492,14 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 					fprintf(FOutFlowFuel, "\n%g", pasafloat);
 					fprintf(FOutFlowFreshAir, "\n%g", pasafloat);
 					for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-						fprintf(FOutFlowBurntGas, " %g", 0.0);
-						fprintf(FOutFlowFuel, " %g", 0.0);
-						fprintf(FOutFlowFreshAir, " %g", 0.0);
+						fprintf(FOutFlowBurntGas, "\t%g", 0.0);
+						fprintf(FOutFlowFuel, "\t%g", 0.0);
+						fprintf(FOutFlowFreshAir, "\t%g", 0.0);
 					}
 					for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-						fprintf(FOutFlowBurntGas, " %g", 0.0);
-						fprintf(FOutFlowFuel, " %g", 0.0);
-						fprintf(FOutFlowFreshAir, " %g", 0.0);
+						fprintf(FOutFlowBurntGas, "\t%g", 0.0);
+						fprintf(FOutFlowFuel, "\t%g", 0.0);
+						fprintf(FOutFlowFreshAir, "\t%g", 0.0);
 					}
 					for(unsigned int j = 0; j < STPipe.size(); ++j) {
 						for(int k = 0; k < STPipe[j]->getNin(); ++k) {
@@ -1980,9 +1510,9 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 										   STPipe[j]->GetGamma(k) * STPipe[j]->GetVelocidad(k) * __cons::ARef * __geom::Circle_area(
 											   STPipe[j]->GetDiametro(k));
 							}
-							fprintf(FOutFlowBurntGas, " %g", STPipe[j]->GetFraccionMasica(k, 0) * massflow);
-							fprintf(FOutFlowFuel, " %g", STPipe[j]->GetFraccionMasica(k, 1) * massflow);
-							fprintf(FOutFlowFreshAir, " %g", STPipe[j]->GetFraccionMasica(k, 2) * massflow);
+							fprintf(FOutFlowBurntGas, "\t%g", STPipe[j]->GetFraccionMasica(k, 0) * massflow);
+							fprintf(FOutFlowFuel, "\t%g", STPipe[j]->GetFraccionMasica(k, 1) * massflow);
+							fprintf(FOutFlowFreshAir, "\t%g", STPipe[j]->GetFraccionMasica(k, 2) * massflow);
 						}
 					}
 
@@ -1996,24 +1526,24 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 					fprintf(FOutFlowCO, "\n%g", pasafloat);
 					fprintf(FOutFlowN2, "\n%g", pasafloat);
 					for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-						fprintf(FOutFlowO2, " %g", 0.0);
-						fprintf(FOutFlowCO2, " %g", 0.0);
-						fprintf(FOutFlowH2O, " %g", 0.0);
-						fprintf(FOutFlowHC, " %g", 0.0);
-						fprintf(FOutFlowSoot, " %g", 0.0);
-						fprintf(FOutFlowNOx, " %g", 0.0);
-						fprintf(FOutFlowCO, " %g", 0.0);
-						fprintf(FOutFlowN2, " %g", 0.0);
+						fprintf(FOutFlowO2, "\t%g", 0.0);
+						fprintf(FOutFlowCO2, "\t%g", 0.0);
+						fprintf(FOutFlowH2O, "\t%g", 0.0);
+						fprintf(FOutFlowHC, "\t%g", 0.0);
+						fprintf(FOutFlowSoot, "\t%g", 0.0);
+						fprintf(FOutFlowNOx, "\t%g", 0.0);
+						fprintf(FOutFlowCO, "\t%g", 0.0);
+						fprintf(FOutFlowN2, "\t%g", 0.0);
 					}
 					for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-						fprintf(FOutFlowO2, " %g", 0.0);
-						fprintf(FOutFlowCO2, " %g", 0.0);
-						fprintf(FOutFlowH2O, " %g", 0.0);
-						fprintf(FOutFlowHC, " %g", 0.0);
-						fprintf(FOutFlowSoot, " %g", 0.0);
-						fprintf(FOutFlowNOx, " %g", 0.0);
-						fprintf(FOutFlowCO, " %g", 0.0);
-						fprintf(FOutFlowN2, " %g", 0.0);
+						fprintf(FOutFlowO2, "\t%g", 0.0);
+						fprintf(FOutFlowCO2, "\t%g", 0.0);
+						fprintf(FOutFlowH2O, "\t%g", 0.0);
+						fprintf(FOutFlowHC, "\t%g", 0.0);
+						fprintf(FOutFlowSoot, "\t%g", 0.0);
+						fprintf(FOutFlowNOx, "\t%g", 0.0);
+						fprintf(FOutFlowCO, "\t%g", 0.0);
+						fprintf(FOutFlowN2, "\t%g", 0.0);
 					}
 					for(unsigned int j = 0; j < STPipe.size(); ++j) {
 						for(int k = 0; k < STPipe[j]->getNin(); ++k) {
@@ -2024,14 +1554,14 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 										   STPipe[j]->GetGamma(k) * STPipe[j]->GetVelocidad(k) * __cons::ARef * __geom::Circle_area(
 											   STPipe[j]->GetDiametro(k));
 							}
-							fprintf(FOutFlowO2, " %g", STPipe[j]->GetFraccionMasica(k, 0) * massflow);
-							fprintf(FOutFlowCO2, " %g", STPipe[j]->GetFraccionMasica(k, 1) * massflow);
-							fprintf(FOutFlowH2O, " %g", STPipe[j]->GetFraccionMasica(k, 2) * massflow);
-							fprintf(FOutFlowHC, " %g", STPipe[j]->GetFraccionMasica(k, 3) * massflow);
-							fprintf(FOutFlowSoot, " %g", STPipe[j]->GetFraccionMasica(k, 4) * massflow);
-							fprintf(FOutFlowNOx, " %g", STPipe[j]->GetFraccionMasica(k, 5) * massflow);
-							fprintf(FOutFlowCO, " %g", STPipe[j]->GetFraccionMasica(k, 6) * massflow);
-							fprintf(FOutFlowN2, " %g", STPipe[j]->GetFraccionMasica(k, 7) * massflow);
+							fprintf(FOutFlowO2, "\t%g", STPipe[j]->GetFraccionMasica(k, 0) * massflow);
+							fprintf(FOutFlowCO2, "\t%g", STPipe[j]->GetFraccionMasica(k, 1) * massflow);
+							fprintf(FOutFlowH2O, "\t%g", STPipe[j]->GetFraccionMasica(k, 2) * massflow);
+							fprintf(FOutFlowHC, "\t%g", STPipe[j]->GetFraccionMasica(k, 3) * massflow);
+							fprintf(FOutFlowSoot, "\t%g", STPipe[j]->GetFraccionMasica(k, 4) * massflow);
+							fprintf(FOutFlowNOx, "\t%g", STPipe[j]->GetFraccionMasica(k, 5) * massflow);
+							fprintf(FOutFlowCO, "\t%g", STPipe[j]->GetFraccionMasica(k, 6) * massflow);
+							fprintf(FOutFlowN2, "\t%g", STPipe[j]->GetFraccionMasica(k, 7) * massflow);
 						}
 					}
 
@@ -2046,26 +1576,26 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 					fprintf(FOutFlowFuel, "\n%g", pasafloat);
 					fprintf(FOutFlowN2, "\n%g", pasafloat);
 					for(unsigned int j = 0; j < STCylinder.size(); ++j) {
-						fprintf(FOutFlowO2, " %g", 0.0);
-						fprintf(FOutFlowCO2, " %g", 0.0);
-						fprintf(FOutFlowH2O, " %g", 0.0);
-						fprintf(FOutFlowHC, " %g", 0.0);
-						fprintf(FOutFlowSoot, " %g", 0.0);
-						fprintf(FOutFlowNOx, " %g", 0.0);
-						fprintf(FOutFlowCO, " %g", 0.0);
-						fprintf(FOutFlowFuel, " %g", 0.0);
-						fprintf(FOutFlowN2, " %g", 0.0);
+						fprintf(FOutFlowO2, "\t%g", 0.0);
+						fprintf(FOutFlowCO2, "\t%g", 0.0);
+						fprintf(FOutFlowH2O, "\t%g", 0.0);
+						fprintf(FOutFlowHC, "\t%g", 0.0);
+						fprintf(FOutFlowSoot, "\t%g", 0.0);
+						fprintf(FOutFlowNOx, "\t%g", 0.0);
+						fprintf(FOutFlowCO, "\t%g", 0.0);
+						fprintf(FOutFlowFuel, "\t%g", 0.0);
+						fprintf(FOutFlowN2, "\t%g", 0.0);
 					}
 					for(unsigned int j = 0; j < STPlenum.size(); ++j) {
-						fprintf(FOutFlowO2, " %g", 0.0);
-						fprintf(FOutFlowCO2, " %g", 0.0);
-						fprintf(FOutFlowH2O, " %g", 0.0);
-						fprintf(FOutFlowHC, " %g", 0.0);
-						fprintf(FOutFlowSoot, " %g", 0.0);
-						fprintf(FOutFlowNOx, " %g", 0.0);
-						fprintf(FOutFlowCO, " %g", 0.0);
-						fprintf(FOutFlowFuel, " %g", 0.0);
-						fprintf(FOutFlowN2, " %g", 0.0);
+						fprintf(FOutFlowO2, "\t%g", 0.0);
+						fprintf(FOutFlowCO2, "\t%g", 0.0);
+						fprintf(FOutFlowH2O, "\t%g", 0.0);
+						fprintf(FOutFlowHC, "\t%g", 0.0);
+						fprintf(FOutFlowSoot, "\t%g", 0.0);
+						fprintf(FOutFlowNOx, "\t%g", 0.0);
+						fprintf(FOutFlowCO, "\t%g", 0.0);
+						fprintf(FOutFlowFuel, "\t%g", 0.0);
+						fprintf(FOutFlowN2, "\t%g", 0.0);
 					}
 					for(unsigned int j = 0; j < STPipe.size(); ++j) {
 						for(int k = 0; k < STPipe[j]->getNin(); ++k) {
@@ -2076,15 +1606,15 @@ void TOutputResults::PrintSpaceTimeResults(bool EngineBlock, double Theta, doubl
 										   STPipe[j]->GetGamma(k) * STPipe[j]->GetVelocidad(k) * __cons::ARef * __geom::Circle_area(
 											   STPipe[j]->GetDiametro(k));
 							}
-							fprintf(FOutFlowO2, " %g", STPipe[j]->GetFraccionMasica(k, 0) * massflow);
-							fprintf(FOutFlowCO2, " %g", STPipe[j]->GetFraccionMasica(k, 1) * massflow);
-							fprintf(FOutFlowH2O, " %g", STPipe[j]->GetFraccionMasica(k, 2) * massflow);
-							fprintf(FOutFlowHC, " %g", STPipe[j]->GetFraccionMasica(k, 3) * massflow);
-							fprintf(FOutFlowSoot, " %g", STPipe[j]->GetFraccionMasica(k, 4) * massflow);
-							fprintf(FOutFlowNOx, " %g", STPipe[j]->GetFraccionMasica(k, 5) * massflow);
-							fprintf(FOutFlowCO, " %g", STPipe[j]->GetFraccionMasica(k, 6) * massflow);
-							fprintf(FOutFlowFuel, " %g", STPipe[j]->GetFraccionMasica(k, 7) * massflow);
-							fprintf(FOutFlowN2, " %g", STPipe[j]->GetFraccionMasica(k, 8) * massflow);
+							fprintf(FOutFlowO2, "\t%g", STPipe[j]->GetFraccionMasica(k, 0) * massflow);
+							fprintf(FOutFlowCO2, "\t%g", STPipe[j]->GetFraccionMasica(k, 1) * massflow);
+							fprintf(FOutFlowH2O, "\t%g", STPipe[j]->GetFraccionMasica(k, 2) * massflow);
+							fprintf(FOutFlowHC, "\t%g", STPipe[j]->GetFraccionMasica(k, 3) * massflow);
+							fprintf(FOutFlowSoot, "\t%g", STPipe[j]->GetFraccionMasica(k, 4) * massflow);
+							fprintf(FOutFlowNOx, "\t%g", STPipe[j]->GetFraccionMasica(k, 5) * massflow);
+							fprintf(FOutFlowCO, "\t%g", STPipe[j]->GetFraccionMasica(k, 6) * massflow);
+							fprintf(FOutFlowFuel, "\t%g", STPipe[j]->GetFraccionMasica(k, 7) * massflow);
+							fprintf(FOutFlowN2, "\t%g", STPipe[j]->GetFraccionMasica(k, 8) * massflow);
 						}
 					}
 				}
@@ -2461,7 +1991,9 @@ void TOutputResults::WriteInstantaneous(bool EngineBlock, double Angle, double A
 
 void TOutputResults::WriteSpaceTime(bool EngineBlock, TBloqueMotor* Engine, int TotalCycles) {
 	if(EngineBlock) {
-		if((Engine->getCiclo() + 1) == TotalCycles - 1) {
+		// Write the last simulated cycle (TotalCycles = SimulationDuration, the cycle count). The old
+		// gate used Run.CycleDuration (=720 deg) here, so it only fired on cycle 719 -> never in practice.
+		if((Engine->getCiclo() + 1) >= TotalCycles) {
 			FWriteSpaceTime = true;
 		}
 	} else {
