@@ -300,7 +300,8 @@ void TBloqueMotor::LeeMotor(const char *FileWAM, fpos_t &filepos, nmTipoModelado
 			FInerciaTotal = pow2(FRelCajaCambios * FRelTrasmision) * Imc + pow2(FRelTrasmision) * Ict + Itr + FMasaTotalVehiculo *
 							pow2(FRadioRueda);
 
-			FPendiente = FMasaTotalVehiculo * 9.81 * sin(FAnguloCarretera);
+			// Road angle is a UI "degrees" field, so convert before sin() (was consumed as radians).
+			FPendiente = FMasaTotalVehiculo * 9.81 * sin(__units::DegToRad(FAnguloCarretera));
 
 			FCoeficienteInercias = FRendCajaCambios * pow2(FRelCajaCambios * FRelTrasmision) / (FInerciaTotal + FMasaTotalVehiculo *
 								   pow2(FRadioRueda));
@@ -1140,9 +1141,10 @@ void TBloqueMotor::AcumulaResultadosMediosBloqueMotor(double TActual, int Cilind
 
 		}
 
-		if(FResMediosMotor.RendimientoVolumetrico || FResMediosMotor.Potencia || FResMediosMotor.RendimientoVolumetricoAtm) {
-			FResMediosMotor.RegimenGiroSUM += FRegimen * DeltaT;
-		}
+		// Engine speed always accumulates: RegimenGiroMED feeds mechanical losses, power, VE and BSFC, and
+		// FRegimen varies each step in transient (vehicle) mode. Gating it on VE/Power left Engine_Speed
+		// (and the power derived from it) reading 0 whenever those two were not selected as outputs.
+		FResMediosMotor.RegimenGiroSUM += FRegimen * DeltaT;
 
 		if(FResMediosMotor.ParPerdidasMecanicas) {
 			FResMediosMotor.ParPerdidasMecanicasSUM += FParPerdidasMecanicas * DeltaT;
@@ -1305,9 +1307,9 @@ void TBloqueMotor::ModeloDeVehiculo(double Time) {
 
 				// Par resistente total
 				FParResistente = FRadioRueda * (FRoadLoad + FPendiente) / (FRendCajaCambios * FRelCajaCambios * FRelTrasmision);
-				if(FTheta < 7200) {
-					FRegimen = __units::Rad_sToRPM(((FParMotor - FParResistente) * FCoeficienteInercias * DeltaT + W));
-				}
+				// Integrate the vehicle speed for the whole run (the old FTheta < 7200 guard froze the engine
+				// speed after 10 cycles, so a longer pull stopped accelerating).
+				FRegimen = __units::Rad_sToRPM(((FParMotor - FParResistente) * FCoeficienteInercias * DeltaT + W));
 				FVelocidadVehiculo = __units::m_sTokm_h((__units::RPMToRad_s(FRegimen) * FRadioRueda) /
 														(FRelCajaCambios * FRelTrasmision));
 			}
