@@ -224,7 +224,19 @@ double TCompTubDep::RegulaFalsi() {
 				double c = pow2(FEntropia2 / *FEntro * *FLanda) - pow(Adep, 2);
 
 				FVelocidad2 = -QuadraticEqP(a, b, c);
-				FASonidoSalida = sqrt(pow2(Adep) - FGamma3 * pow2(FVelocidad2));
+				// Deep-choke guard: when the compressor is pushed far past its RC=1 (choke) flow
+				// during a fast transient (e.g. the turbo lagging an engine-speed ramp), the clamped
+				// discharge velocity from the quadratic can exceed the local sonic limit, so
+				// a_out = sqrt(a0^2 - (g-1)/2 * v^2) turns imaginary -> a NaN that poisons the run.
+				// A station cannot exceed Mach 1, so clamp |v2| to the sonic value v* = a0/sqrt(1+(g-1)/2)
+				// (a_out then equals the sonic a*), keeping the choked discharge real and finite.
+				double SonicArg = pow2(Adep) - FGamma3 * pow2(FVelocidad2);
+				if(SonicArg < 0.) {
+					double vSonic = Adep / sqrt(1. + FGamma3);
+					FVelocidad2 = (FVelocidad2 < 0. ? -vSonic : vSonic);
+					SonicArg = pow2(Adep) - FGamma3 * pow2(FVelocidad2);
+				}
+				FASonidoSalida = sqrt(SonicArg);
 
 				std::cout << "WARNING: El compresor: " << FNumeroCompresor << " esta trabajando en zona de choque" << std::endl;
 				// FVariacionRegimen=0.95;
