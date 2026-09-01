@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 project (OpenWAM)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-if(MSVC)
+if(MSVC AND NOT CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "ARM")
   # AVX2 (256-bit / 4-double) for the Roe-solver auto-vectorization (Tier-3). Default is SSE2.
-  # Requires an AVX2-capable CPU at runtime.
+  # Requires an AVX2-capable CPU at runtime. x86/x64 only -- meaningless on ARM64.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /arch:AVX2")
 endif()
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)

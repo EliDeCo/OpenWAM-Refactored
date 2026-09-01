@@ -43,6 +43,11 @@ TOpenWAM* Aplication = NULL;
 
 int main(int argc, char *argv[]) {
 
+	if(argc < 2) {
+		printf("ERROR: No input file was supplied.\n");
+		exit(EXIT_FAILURE);
+	}
+
 	init_labels();
 
 	Aplication = new TOpenWAM();

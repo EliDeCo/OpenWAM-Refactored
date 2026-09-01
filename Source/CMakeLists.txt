@@ -27,12 +27,16 @@ add_subdirectory(ODModels)
 add_subdirectory(Output)
 add_subdirectory(Turbocompressor)
 add_subdirectory(Wrappers)
-add_executable(OpenWAM
+set(OpenWAM_SOURCES
   OpenWAM.cpp
   TOpenWAM.cpp
   TTimeControl.cpp
-  OpenWAM.rc
 )
+if(WIN32)
+  # OpenWAM.rc is a Windows resource script; skip it on other platforms.
+  list(APPEND OpenWAM_SOURCES OpenWAM.rc)
+endif()
+add_executable(OpenWAM ${OpenWAM_SOURCES})
 target_link_libraries(
   OpenWAM
   1DPipes
