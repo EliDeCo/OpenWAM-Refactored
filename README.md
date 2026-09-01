@@ -12,8 +12,8 @@ The ui allows the user to place nodes representing valves, pistons, pipes, and o
 - Fixed many bugs and improved error messages
 
 ## Get Started
-Users: Download the latest release and read the user guide.
-Developers: Clone the repository and read the user and developer guides in the tutorial directory.
+- Users: Download the latest release for you architecture and read the user guide.
+- Developers: Clone the repository and read the user and developer guides in the tutorial directory.
 
 ## AI Usage
 Claude code was employed to greatly increase the speed of isololating bugs, directly writing solutions, and generating tutorial pdfs. Research, planning, the creation of examples, and everything else was done by a human (myself).
