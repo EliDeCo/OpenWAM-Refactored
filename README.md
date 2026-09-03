@@ -1,4 +1,7 @@
 # OpenWAM-Refactored
+
+![Mitsubishi 3B21T Turbocharged Engine](images\Mitsubishi-3b21t-full-engine-visual.png)
+
 OpenWAM refactored is a 1D gas dynamic code primarily targeting the simulation of internal combustion engines, forked from the original [repository](https://github.com/CMT-UPV/OpenWAM) made by CMT-UPV.
 
 ## Brief Overview
@@ -12,11 +15,8 @@ The ui allows the user to place nodes representing valves, pistons, pipes, and o
 - Fixed many bugs and improved error messages
 
 ## Get Started
-- Users: Download the latest release for you architecture and read the user guide.
+- Users: Download the latest release for you architecture and read the user guide in the tutorial directory.
 - Developers: Clone the repository and read the user and developer guides in the tutorial directory.
-
-## AI Usage
-Claude code was employed to greatly increase the speed of isololating bugs, directly writing solutions, and generating tutorial pdfs. Research, planning, the creation of examples, and everything else was done by a human (myself).
 
 ## Citations
 
