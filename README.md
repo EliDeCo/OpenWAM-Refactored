@@ -1,6 +1,6 @@
 # OpenWAM-Refactored
 
-![Mitsubishi 3B21T Turbocharged Engine](images\Mitsubishi-3b21t-full-engine-visual.png)
+![Mitsubishi 3B21T Turbocharged Engine](images/Mitsubishi-3b21t-full-engine-visual.png)
 
 OpenWAM refactored is a 1D gas dynamic code primarily targeting the simulation of internal combustion engines, forked from the original [repository](https://github.com/CMT-UPV/OpenWAM) made by CMT-UPV.
 
