@@ -14,6 +14,12 @@ The ui allows the user to place nodes representing valves, pistons, pipes, and o
 - Tested and documented the majoriy of ui features
 - Fixed many bugs and improved error messages
 
+## Validation
+Simulation schemes outlined in papers such as Kim et. al were used as a reference for newly written code. The upgraded solver was then tested against all of the cited papers and achieved results within 5% for the majority of use cases. Known shortcomings include the 2-stroke case, where the lack of 3D simulation mean scavenging cannot be accurately represented.
+
+## AI Usage
+Claude code was employed to greatly speed up the development of this project, with it being the sole entity finding bugs and directly writing code. Claude was also used to write the tutorial pdfs. However, everything above this level was not done by AI. All planning, research/source selection, decision making, proofreading, and the creation of this README was all done without the use of AI.
+
 ## Get Started
 - Users: Download the latest release for you architecture and read the user guide in the tutorial directory.
 - Developers: Clone the repository and read the user and developer guides in the tutorial directory.
