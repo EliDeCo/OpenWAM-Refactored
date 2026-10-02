@@ -369,14 +369,17 @@ void TOutputResults::HeaderAverageResults(stEspecies *SpeciesName, TCalculoExter
 	}
 }
 
-void TOutputResults::OutputAverageResults(double AcumulatedTime, TCalculoExtern* EXTERN, bool ThereIsDLL) {
+void TOutputResults::OutputAverageResults(double AcumulatedTime, TBloqueMotor* Engine, TCalculoExtern* EXTERN,
+		bool ThereIsDLL) {
 
 	float pasafloat;
 
 	pasafloat = (float)(AcumulatedTime);
 
 	FAvgOutput << std::endl;
-	FAvgOutput << AvgEngine->getCiclo();
+	// Cycle column comes from the engine itself: AvgEngine is NULL unless engine-level average results were
+	// requested (EN_MOTOR = 0), and dereferencing it here segfaulted at the end of the first cycle.
+	FAvgOutput << Engine->getCiclo();
 	FAvgOutput << "\t";
 	FAvgOutput << pasafloat;
 
