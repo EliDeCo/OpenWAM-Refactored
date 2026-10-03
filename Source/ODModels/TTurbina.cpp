@@ -39,6 +39,9 @@
 TTurbina::TTurbina(int i, nmTipoDeposito TipoDeposito, int nentradas, nmTipoCalculoEspecies SpeciesModel,
 				   int numeroespecies, nmCalculoGamma GammaCalculation, bool ThereIsEGR) :
 	TDepVolCteBase(i, TipoDeposito, SpeciesModel, numeroespecies, GammaCalculation, ThereIsEGR) {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FResMediosTurbina = stResMediosTurbina();
+	FResInstantTurbina = stResInstantTurbina();
 	asgNumeroTurbina = false;
 
 	FTimeTurbina = 0.;
@@ -71,6 +74,11 @@ TTurbina::TTurbina(int i, nmTipoDeposito TipoDeposito, int nentradas, nmTipoCalc
 		FRelacionCinAcum[j] = 0.;
 	}
 	FPonderacionRelacionCinematica = new double[nentradas];
+	for(int j = 0; j < nentradas; j++) {
+		FPonderacionRelacionCinematica[j] = 0.;   // accumulated from the first step; was never zeroed
+	}
+	FTrabajoTotal = 0.;
+	FPotencia = 0.;
 
 	FCCSalida = NULL;
 	FCCSalida = NULL;
@@ -207,6 +215,7 @@ void TTurbina::ActualizaPropiedades(double TimeCalculo) {
 
 			int iterCount = 0;
 			const int MAX_ITER = 10000;
+			TomaFlujosUniones();
 			while(!Converge) {
 				if(++iterCount >= MAX_ITER) {
 					printf("ERROR: TTurbina %d: 0-D energy balance did not converge in %d iters (err %e); volume %e m^3 likely too small - increase it.\n",
@@ -216,6 +225,16 @@ void TTurbina::ActualizaPropiedades(double TimeCalculo) {
 				}
 				H = 0.;
 				for(int i = 0; i < FNumeroUniones; i++) {
+					if(FUnionFlujoCara[i]) {   // conservative: exactly what the pipe exchanged through its end face
+						m = FUnionMasa[i];
+						if(FirstStep) {
+							MasaEntrante += m;
+							for(int j = 0; j < FNumeroEspecies - FIntEGR; j++)
+								FMasaEspecie[j] += FUnionMasaEspecie[i][j];
+						}
+						H += EntalpiaEntradaH0(FUnionH0[i], m, Ason1, FMasa, FCCDeposito[i]->getGamma());
+						continue;
+					}
 					if(dynamic_cast<TCCDeposito*>(FCCDeposito[i])->getSentidoFlujo() == nmEntrante) {
 						SignoFlujo = 1;
 					} else if(dynamic_cast<TCCDeposito*>(FCCDeposito[i])->getSentidoFlujo() == nmSaliente) {

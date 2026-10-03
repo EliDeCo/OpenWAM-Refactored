@@ -43,6 +43,10 @@ class TCCExtremoCerrado: public TCondicionContorno {
 	double *FCD;    // Caracteristica desconocida del tubo.
 
   public:
+
+	bool EndClosed() const {
+		return true;
+	}
 	TCCExtremoCerrado(nmTypeBC TipoCC, int numCC, nmTipoCalculoEspecies SpeciesModel, int numeroespecies,
 					  nmCalculoGamma GammaCalculation, bool ThereIsEGR);
 

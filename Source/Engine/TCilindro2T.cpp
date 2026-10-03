@@ -297,14 +297,20 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 		/* =============================== */
 		FMasa0 = FMasa;
 
+		TomaFlujosValvulas();
 		if(!FCicloCerrado && FDeltaAngulo > 0.) {
 			// GASTO POR ADMISION
 			for(int i = 0; i < FNumeroUnionesAdm; i++) {
-				FMasaValvAdm = -dynamic_cast<TCCCilindro*>(FCCValvulaAdm[i])->getMassflow() *
-							   FDeltaT; // signo - xq el massflow entrante se calcula negativo en la BC. Asi en el cilindro sera positivo si es entrante y viceversa.
-				if(FAnguloActual - FDeltaAngulo < FDistribucion.CA
-				   && FAnguloActual > FDistribucion.CA) {  // FDistribucion.CA es el CrankAngle de cierre de la admision.
-					FMasaValvAdm = FMasaValvAdm * (FDistribucion.CA - FAnguloActual + FDeltaAngulo) / FDeltaAngulo;
+				if(FValvAdmFlujoCara[i]) {
+					// Pipe face flux: no closure-angle truncation, a closed valve exchanges exactly nothing.
+					FMasaValvAdm = FValvAdmMasa[i];
+				} else {
+					FMasaValvAdm = -dynamic_cast<TCCCilindro*>(FCCValvulaAdm[i])->getMassflow() *
+								   FDeltaT; // signo - xq el massflow entrante se calcula negativo en la BC. Asi en el cilindro sera positivo si es entrante y viceversa.
+					if(FAnguloActual - FDeltaAngulo < FDistribucion.CA
+					   && FAnguloActual > FDistribucion.CA) {  // FDistribucion.CA es el CrankAngle de cierre de la admision.
+						FMasaValvAdm = FMasaValvAdm * (FDistribucion.CA - FAnguloActual + FDeltaAngulo) / FDeltaAngulo;
+					}
 				}
 				MasaAdmInstante += FMasaValvAdm;
 				FMasa += FMasaValvAdm;
@@ -312,11 +318,18 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 				FAcumMasaPorAdm += FMasaValvAdm;
 
 				/* Transporte de especies quimicas */
-				for(int j = 0; j < FMotor->getSpeciesNumber() - FIntEGR; j++) {
-					FMasaEspecie[j] += FCCValvulaAdm[i]->GetFraccionMasicaEspecie(j) * FMasaValvAdm;
+				if(FValvAdmFlujoCara[i]) {
+					for(int j = 0; j < FMotor->getSpeciesNumber() - FIntEGR; j++)
+						FMasaEspecie[j] += FValvAdmMasaEspecie[i][j];
+					if(FHayEGR)
+						FAcumMasaEGR += FValvAdmMasaEspecie[i][FMotor->getSpeciesNumber() - 1];
+				} else {
+					for(int j = 0; j < FMotor->getSpeciesNumber() - FIntEGR; j++) {
+						FMasaEspecie[j] += FCCValvulaAdm[i]->GetFraccionMasicaEspecie(j) * FMasaValvAdm;
+					}
+					if(FHayEGR)
+						FAcumMasaEGR += FCCValvulaAdm[i]->GetFraccionMasicaEspecie(FMotor->getSpeciesNumber() - 1) * FMasaValvAdm;
 				}
-				if(FHayEGR)
-					FAcumMasaEGR += FCCValvulaAdm[i]->GetFraccionMasicaEspecie(FMotor->getSpeciesNumber() - 1) * FMasaValvAdm;
 
 				// --- Benson-Bradham: fresh-charge short-circuit ---
 				// A fraction FShortCircuitFraction of the DELIVERED fresh air leaves straight out the
@@ -335,19 +348,29 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 			}
 			// GASTO POR ESCAPE
 			for(int i = 0; i < FNumeroUnionesEsc; i++) {
-				masavalesc = -dynamic_cast<TCCCilindro*>(FCCValvulaEsc[i])->getMassflow() *
-							 FDeltaT; // signo - xq el massflow entrante se calcula negativo en la BC. Asi en el cilindro sera positivo si es entrante y viceversa.
-				if(FAnguloActual - FDeltaAngulo < FDistribucion.CE && FAnguloActual > FDistribucion.CE) {
-					masavalesc = masavalesc * (FDistribucion.CE - FAnguloActual + FDeltaAngulo) /
-								 FDeltaAngulo; // FDistribucion.CE es el CrankAngle de cierre del escape.
+				if(FValvEscFlujoCara[i]) {
+					// Pipe face flux: no closure-angle truncation, a closed valve exchanges exactly nothing.
+					masavalesc = FValvEscMasa[i];
+				} else {
+					masavalesc = -dynamic_cast<TCCCilindro*>(FCCValvulaEsc[i])->getMassflow() *
+								 FDeltaT; // signo - xq el massflow entrante se calcula negativo en la BC. Asi en el cilindro sera positivo si es entrante y viceversa.
+					if(FAnguloActual - FDeltaAngulo < FDistribucion.CE && FAnguloActual > FDistribucion.CE) {
+						masavalesc = masavalesc * (FDistribucion.CE - FAnguloActual + FDeltaAngulo) /
+									 FDeltaAngulo; // FDistribucion.CE es el CrankAngle de cierre del escape.
+					}
 				}
 				MasaEscInstante += masavalesc;
 				FMasa += masavalesc;
 				FAcumMasaPorEsc += masavalesc;
 
 				/* Transporte de especies quimicas */
-				for(int j = 0; j < FMotor->getSpeciesNumber() - FIntEGR; j++) {
-					FMasaEspecie[j] += FCCValvulaEsc[i]->GetFraccionMasicaEspecie(j) * masavalesc;
+				if(FValvEscFlujoCara[i]) {
+					for(int j = 0; j < FMotor->getSpeciesNumber() - FIntEGR; j++)
+						FMasaEspecie[j] += FValvEscMasaEspecie[i][j];
+				} else {
+					for(int j = 0; j < FMotor->getSpeciesNumber() - FIntEGR; j++) {
+						FMasaEspecie[j] += FCCValvulaEsc[i]->GetFraccionMasicaEspecie(j) * masavalesc;
+					}
 				}
 			}
 		}
@@ -884,6 +907,10 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 			// ENTALPIA POR ADMISION;
 			H1 = 0.;
 			for(int i = 0; i < FNumeroUnionesAdm; i++) {
+				if(FValvAdmFlujoCara[i]) {   // exact energy exchange with the valve pipe
+					H1 += EntalpiaEntradaH0(FValvAdmH0[i], FValvAdmMasa[i], ASon1 / __cons::ARef, PrimerPaso ? FMasa0 : FMasa);
+					continue;
+				}
 				if(dynamic_cast<TCCCilindro*>(FCCValvulaAdm[i])->getMassflow() != 0
 				   && dynamic_cast<TCCCilindro*>(FCCValvulaAdm[i])->getSentidoFlujo() == nmEntrante) {
 					if(PrimerPaso) {
@@ -899,6 +926,10 @@ void TCilindro2T::ActualizaPropiedades(double TiempoActual) {
 			}
 			// ENTALPIA POR ESCAPE;
 			for(int i = 0; i < FNumeroUnionesEsc; i++) {
+				if(FValvEscFlujoCara[i]) {   // exact energy exchange with the valve pipe
+					H1 += EntalpiaEntradaH0(FValvEscH0[i], FValvEscMasa[i], ASon1 / __cons::ARef, PrimerPaso ? FMasa0 : FMasa);
+					continue;
+				}
 				if(dynamic_cast<TCCCilindro*>(FCCValvulaEsc[i])->getMassflow() != 0
 				   && dynamic_cast<TCCCilindro*>(FCCValvulaEsc[i])->getSentidoFlujo() == nmEntrante) {
 					if(PrimerPaso) {

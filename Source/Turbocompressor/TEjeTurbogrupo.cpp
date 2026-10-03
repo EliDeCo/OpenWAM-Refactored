@@ -43,6 +43,9 @@
 // ---------------------------------------------------------------------------
 
 TEjeTurbogrupo::TEjeTurbogrupo(int i, int ncilin) {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FResMediosEje = stResMediosEje();
+	FResInstantEje = stResInstantEje();
 
 	FNumeroEje = i + 1;
 	FNumeroCompresor = NULL;
@@ -56,6 +59,9 @@ TEjeTurbogrupo::TEjeTurbogrupo(int i, int ncilin) {
 
 	FRPMControlled = false;
 	FTime = 0;
+	FAngle0 = 0.;   // previous crank angle for the cycle-boundary test in CalculaEjesTurbogrupo
+	FResMediosEje.RegimenSUM = 0.;
+	FResMediosEje.TiempoSUM = 0.;
 
 	FThereIsHTM = false;
 

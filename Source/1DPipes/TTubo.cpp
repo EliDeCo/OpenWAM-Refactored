@@ -83,6 +83,9 @@ inline int **AllocAlignedRowsInt(int nrows, size_t Npad) {
 
 TTubo::TTubo(int SpeciesNumber, int j, double SimulationDuration, TBloqueMotor **Engine,
 			 nmTipoCalculoEspecies SpeciesModel, nmCalculoGamma GammaCalculation, bool ThereIsEGR) {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FMod = stModeloCalculoTubos();
+	FTVD = stTVD();
 
 	if(Engine != NULL) {
 		FAnguloTotalCiclo = Engine[0]->getAngTotalCiclo();
@@ -180,6 +183,8 @@ TTubo::TTubo(int SpeciesNumber, int j, double SimulationDuration, TBloqueMotor *
 	ResultadosMedios = NULL;
 	ResultInstantaneos = NULL;
 	FNumResMedios = 0;
+	FTiempoMedSUM = 0.;   // accumulated every step, even for pipes without average results
+	FControlResMed = 1;
 	FNumResInstant = 0;
 	FNumDistSensores = 0;
 	FIntercooler = false;
@@ -206,6 +211,14 @@ TTubo::TTubo(int SpeciesNumber, int j, double SimulationDuration, TBloqueMotor *
 	FRoeQ = NULL;
 	FRoeRes = NULL;
 	FRoeF = NULL;
+	for(int e = 0; e < 2; e++) {
+		FStepFlux[e][0] = FStepFlux[e][1] = FStepFlux[e][2] = 0.;
+		FEndAccMass[e] = 0.;
+		FEndAccEnergy[e] = 0.;
+		FEndAccMom[e] = 0.;
+		FBCExtremo[e] = NULL;
+		FEndClosed[e] = false;
+	}
 	FLWhi12 = NULL;
 	FLWrho12 = NULL;
 	FLWRe12 = NULL;
@@ -946,6 +959,8 @@ void TTubo::ComunicacionTubo_CC(TCondicionContorno **BC) {
 				FTuboCCNodoDer = i;
 			}
 		}
+		FBCExtremo[0] = BC[FNodoIzq - 1];
+		FBCExtremo[1] = BC[FNodoDer - 1];
 #ifdef usetry
 	}
 
@@ -2080,6 +2095,20 @@ void TTubo::RoeMResidual(double** Q, double** R) {
 		}
 		double f[3];
 		RoeMFlux(WL, WR, FGamma[i], FGamma[i + 1], f);         // variable-gamma: each side's own gamma
+		if((i == 0 && FEndClosed[0]) || (i == FNin - 2 && FEndClosed[1])) {
+			// Closed boundary (shut valve/throttle, closed end): exact wall flux from the mirror ghost of the adjacent
+			// interior cell (Hong & Kim 2011, 4.1.2). Mass and energy fluxes are zero, the momentum flux is the
+			// Riemann wall pressure; the boundary end node is not used, so nothing leaks through a closed wall.
+			const int c = (i == 0) ? 1 : FNin - 2;
+			double WC[3] = { FV1[0][c], FV1[1][c], FV1[2][c] };
+			double WM[3] = { FV1[0][c], -FV1[1][c], FV1[2][c] };
+			if(i == 0)
+				RoeMFlux(WM, WC, FGamma[c], FGamma[c], f);
+			else
+				RoeMFlux(WC, WM, FGamma[c], FGamma[c], f);
+			f[0] = 0.;
+			f[2] = 0.;
+		}
 		const double Aface = FArea12[i];
 		FW[0][i] = f[0] * Aface;
 		FW[1][i] = f[1] * Aface;
@@ -2143,11 +2172,33 @@ void TTubo::RoeM_RK3() {
 		}
 		const double dt = FDeltaTime;
 		const int Np = FNin;
+		const int nY = FNumEcuaciones - 3;
+		for(int e = 0; e < 2; e++)
+			FEndClosed[e] = FBCExtremo[e] != NULL && FBCExtremo[e]->EndClosed();
+		for(int e = 0; e < 2; e++) {
+			FStepFlux[e][0] = FStepFlux[e][1] = FStepFlux[e][2] = 0.;
+			FStepFluxY[e].assign(nY, 0.);
+			if((int) FEndAccY[e].size() != nY)
+				FEndAccY[e].assign(nY, 0.);
+		}
+		// RK3 weight of each stage's residual in U^{n+1} = U^n - dt (R0/6 + R1/6 + 2 R2/3): accumulating the
+		// boundary-face fluxes with these weights gives exactly what the interior exchanged through each end face.
+		auto AcumulaFlujoCaras = [&](double w) {
+			for(int k = 0; k < 3; k++) {
+				FStepFlux[0][k] += w * FW[k][0];
+				FStepFlux[1][k] += w * FW[k][Np - 2];
+			}
+			for(int t = 0; t < nY; t++) {
+				FStepFluxY[0][t] += w * FW[3 + t][0];
+				FStepFluxY[1][t] += w * FW[3 + t][Np - 2];
+			}
+		};
 
 		// All equations (mass, momentum, energy, species k>=3) advance together through the RK3 stages;
 		// species get their contact-upwind flux in RoeMResidual. Boundary cells held fixed = FU0.
 		// Stage 1: Q1 = Q0 - dt R(Q0).
 		RoeMResidual(FU0, FRoeRes);
+		AcumulaFlujoCaras(1.0 / 6.0);
 		for(int k = 0; k < FNumEcuaciones; k++) {
 			FRoeQ[k][0] = FU0[k][0];
 			FRoeQ[k][Np - 1] = FU0[k][Np - 1];
@@ -2156,6 +2207,7 @@ void TTubo::RoeM_RK3() {
 		}
 		// Stage 2: Q2 = 3/4 Q0 + 1/4 (Q1 - dt R(Q1))
 		RoeMResidual(FRoeQ, FRoeRes);
+		AcumulaFlujoCaras(1.0 / 6.0);
 		for(int k = 0; k < FNumEcuaciones; k++) {
 			FRoeQ[k][0] = FU0[k][0];
 			FRoeQ[k][Np - 1] = FU0[k][Np - 1];
@@ -2164,6 +2216,7 @@ void TTubo::RoeM_RK3() {
 		}
 		// Stage 3: U^{n+1} = 1/3 Q0 + 2/3 (Q2 - dt R(Q2))
 		RoeMResidual(FRoeQ, FRoeRes);
+		AcumulaFlujoCaras(2.0 / 3.0);
 		for(int k = 0; k < FNumEcuaciones; k++)
 			for(int i = 1; i < Np - 1; i++)
 				FU1[k][i] = (1.0 / 3.0) * FU0[k][i] + (2.0 / 3.0) * (FRoeQ[k][i] - dt * FRoeRes[k][i]);
@@ -2172,6 +2225,15 @@ void TTubo::RoeM_RK3() {
 		for(int k = 0; k < FNumEcuaciones; k++) {
 			FU1[k][0] = FU0[k][0];
 			FU1[k][Np - 1] = FU0[k][Np - 1];
+		}
+		// Hand this step's boundary-face exchange to the elements on the other side of each face.
+		const double scale = dt * FNumeroConductos;
+		for(int e = 0; e < 2; e++) {
+			FEndAccMass[e] += FStepFlux[e][0] * scale;
+			FEndAccEnergy[e] += FStepFlux[e][2] * scale;
+			FEndAccMom[e] += FStepFlux[e][1] * scale;
+			for(int t = 0; t < nY; t++)
+				FEndAccY[e][t] += FStepFluxY[e][t] * scale;
 		}
 #ifdef usetry
 	} catch(exception & N) {
@@ -2183,6 +2245,49 @@ void TTubo::RoeM_RK3() {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+void TTubo::TakeEndFlux(int end, double& mass, double& energy, double* Y) {
+	double momentum = 0.;
+	TakeEndFlux(end, mass, momentum, energy, Y);
+}
+
+void TTubo::TakeEndFlux(int end, double& mass, double& momentum, double& energy, double* Y) {
+	momentum = FEndAccMom[end];
+	FEndAccMom[end] = 0.;
+	// Transported species t map to species t (t < FNumeroEspecies-2); with EGR the last transported slot is the
+	// EGR marker (species FNumeroEspecies-1). The filler species FNumeroEspecies-2 is the remainder of the mass,
+	// exactly as Transforma1Area/Transforma2Area build the cell composition.
+	mass = FEndAccMass[end];
+	energy = FEndAccEnergy[end];
+	double acum = 0.;
+	const int nT = FNumeroEspecies - 2;
+	for(int t = 0; t < nT; t++) {
+		Y[t] = (t < (int) FEndAccY[end].size()) ? FEndAccY[end][t] : 0.;
+		acum += Y[t];
+	}
+	Y[nT] = mass - acum;
+	if(FHayEGR)
+		Y[FNumeroEspecies - 1] = (nT < (int) FEndAccY[end].size()) ? FEndAccY[end][nT] : 0.;
+	FEndAccMass[end] = 0.;
+	FEndAccEnergy[end] = 0.;
+	for(size_t t = 0; t < FEndAccY[end].size(); t++)
+		FEndAccY[end][t] = 0.;
+}
+
+double TTubo::PeekStepFluxSpecies(int end, int j) const {
+	const int nT = FNumeroEspecies - 2;
+	if(j < nT)
+		return (j < (int) FStepFluxY[end].size()) ? FStepFluxY[end][j] : 0.;
+	if(j == nT) {
+		double acum = 0.;
+		for(int t = 0; t < nT && t < (int) FStepFluxY[end].size(); t++)
+			acum += FStepFluxY[end][t];
+		return FStepFlux[end][0] - acum;
+	}
+	return (nT < (int) FStepFluxY[end].size()) ? FStepFluxY[end][nT] : 0.;   // EGR marker
+}
+
 // ---------------------------------------------------------------------------
 
 void TTubo::CalculaFlujo(double **U, double **W, double *Gamma, double *Gamma1, int Nodos) {
@@ -3297,7 +3402,7 @@ void TTubo::CalculaResultadosMedios(double Theta) {
 				if(ResultadosMedios[i].Velocity)
 					ResultadosMedios[i].VelocidadSUM += FVelocidadDim[FNin - 1] * FDeltaTime;
 				if(ResultadosMedios[i].Massflow) {
-					ResultadosMedios[i].GastoSUM += FFlowMass[i] * FDeltaTime;
+					ResultadosMedios[i].GastoSUM += FFlowMass[FNin - 1] * FDeltaTime;   // was FFlowMass[i] (result index, not node)
 				}
 				if(ResultadosMedios[i].TemperaturaInternaPared)
 					ResultadosMedios[i].TemperaturaInternaParedSUM += FTPTubo[0][FNin - 1] * FDeltaTime;

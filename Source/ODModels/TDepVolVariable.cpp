@@ -139,7 +139,16 @@ void TDepVolVariable::ActualizaPropiedades(double TimeCalculo) {
 
 		}
 
+		TomaFlujosUniones();
 		for(int i = 0; i < FNumeroUniones; i++) {
+			if(FUnionFlujoCara[i]) {   // conservative: exactly what the pipe exchanged through its end face
+				m = FUnionMasa[i];
+				MasaEntrante += m;
+				H += EntalpiaEntradaH0(FUnionH0[i], m, FAsonido, FMasa0, FCCDeposito[i]->getGamma());
+				for(int j = 0; j < FNumeroEspecies - FIntEGR; j++)
+					FMasaEspecie[j] += FUnionMasaEspecie[i][j];
+				continue;
+			}
 			if(dynamic_cast<TCCDeposito *>(FCCDeposito[i])->getSentidoFlujo() == nmEntrante) {
 				SignoFlujo = 1;
 			} else if(dynamic_cast<TCCDeposito *>(FCCDeposito[i])->getSentidoFlujo() == nmSaliente) {
@@ -238,6 +247,11 @@ void TDepVolVariable::IniciaVolumen(double Theta) {
 		FAngulo = Theta - FDesfase;
 		FVolumen = CalculaVolumen(FAngulo, FCarrera, FLBiela, FDiametro, FVolumenMuerto);
 		FMasa = FVolumen * FGamma * __units::BarToPa(FPressure) / pow2(FAsonido * __cons::ARef);
+		// The species masses could not be built in LeeDatosGeneralesDepositos (volume unknown there);
+		// they are accumulated every step afterwards, so they must start from the real initial mass.
+		for(int j = 0; j < FNumeroEspecies - FIntEGR; j++) {
+			FMasaEspecie[j] = FMasa * FFraccionMasicaEspecie[j];
+		}
 		FVolumen0 = FVolumen;
 	} catch(exception &N) {
 		std::cout << "ERROR: TDepVolVariable::IniciaVolumen en el compresor volumetrico: " << FNumeroCompresorVol << std::endl;

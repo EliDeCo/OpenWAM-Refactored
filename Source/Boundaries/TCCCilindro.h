@@ -59,6 +59,7 @@ class TCCCilindro: public TCondicionContorno {
 
 	double FSeccionEficaz; // Seccion eficaz de la valvula
 	double FGasto; // Massflow en el extremo del tubo.
+	bool FCerrado; //!< Last evaluation found the connection closed (Cd <= 1e-4); kept while the flow is stopped.
 	double FMomento;
 	double FVelocity; // Velocity en el extremo del tubo
 	double FSonido; // Velocity del sonido en el extremo del tubo
@@ -109,6 +110,9 @@ class TCCCilindro: public TCondicionContorno {
 	// void FSSupercritico(double vel_supuesta,double *a2_1,double *a2_2);
 
   public:
+
+	//! Closed valve, or the cylinder is in its closed cycle (it then ignores any valve flow).
+	bool EndClosed() const;
 
 	/**
 	 * @brief Naniano

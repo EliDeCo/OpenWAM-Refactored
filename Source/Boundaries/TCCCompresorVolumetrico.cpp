@@ -39,6 +39,9 @@
 TCCCompresorVolumetrico::TCCCompresorVolumetrico(nmTypeBC TipoCC, int numCC, nmTipoCalculoEspecies SpeciesModel,
 		int numeroespecies, nmCalculoGamma GammaCalculation, bool ThereIsEGR) :
 	TCondicionContorno(TipoCC, numCC, SpeciesModel, numeroespecies, GammaCalculation, ThereIsEGR) {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FResMediosCV = stResMediosCV();
+	FResInstantCV = stResInstantCV();
 
 	FTuboExtremo = NULL;
 	asgNumeroCV = false;

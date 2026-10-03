@@ -171,6 +171,14 @@ class TCompresor {
 
   public:
 
+	//! Outlet pipe and end (0 left, 1 right) for compressors that discharge into a pipe; NULL otherwise.
+	virtual TTubo* getTuboSalida() {
+		return NULL;
+	}
+	virtual int getExtremoSalida() {
+		return -1;
+	}
+
 //---------------------------------------------------------------------------
 //          VARIABLES PUBLICAS
 //---------------------------------------------------------------------------

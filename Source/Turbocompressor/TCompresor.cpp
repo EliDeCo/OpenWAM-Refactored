@@ -40,6 +40,9 @@
 
 TCompresor::TCompresor(int i, nmTipoCalculoEspecies SpeciesModel, int numeroespecies, nmCalculoGamma GammaCalculation,
 					   bool ThereIsEGR) {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FMedias = stMediasCompresor();
+	FInstant = stInstantaneosCompresor();
 	FNumeroCompresor = i + 1;
 	FMedias.GraficaMedias = false;
 	FMedias.GraficaTrabajo = false;
@@ -62,6 +65,9 @@ TCompresor::TCompresor(int i, nmTipoCalculoEspecies SpeciesModel, int numeroespe
 	FBombeo = true;
 	FTrabajoPaso = 0.;
 	FDeltaTPaso = 0.;
+	// Read by TDeposito::CriterioEstabilidad on the first step, before the compressor has been updated;
+	// left uninitialised it was random heap data and intermittently crashed the run at startup.
+	FGastoCompresor = 0.;
 
 	FCalculoEspecies = SpeciesModel;
 	FNumeroEspecies = numeroespecies;

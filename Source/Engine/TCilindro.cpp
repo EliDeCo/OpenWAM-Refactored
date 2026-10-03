@@ -41,6 +41,11 @@
 // ---------------------------------------------------------------------------
 
 TCilindro::TCilindro(TBloqueMotor *Engine, bool ThereIsEGR) {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FDistribucion = stDistribucion();
+	FCalor = stCalor();
+	FResMediosCilindro = stResMediosCilindro();
+	FResInstantCilindro = stResInstantCilindro();
 
 	FMotor = Engine;
 
@@ -48,6 +53,24 @@ TCilindro::TCilindro(TBloqueMotor *Engine, bool ThereIsEGR) {
 	FTempPared = NULL;
 	FTrabajoNeto = 0.;
 	FSwirlSUM = 0.;
+	FParInstantaneo = 0.;   // summed by TBloqueMotor::ModeloDeVehiculo before the cylinder first computes it
+	FTrabajoNetoACUM = 0.;  // work accumulators are only reset at the end of a cycle, so cycle 1 needs a start
+	FAvisosFlujoCicloCerrado = 0;
+	FTrabajoBombeoACUM = 0.;
+	FAnguloActual = 0.;     // set properly in IniciaVariables, but read by TCCCilindro::AsignaCilindro before that
+	FAnguloAnterior = 0.;
+	FMomentoAngularAdm = 0.;   // swirl accumulators (+= every step; feed FWoma -> Woschni heat transfer)
+	FMomentoAngularEsc = 0.;
+	FFuelAcum = 0.;            // injected-fuel accumulator; only reset at injection start, read in cycle 1
+	FFuelInstant = 0.;
+	FFuelTotal = 0.;
+	FCalculadoPaso = false;   // read by TOpenWAM::UpdateEngine on the first step; garbage 'true' skipped it
+	FCicloCerrado = false;
+	FPrimeraCombustion = true;
+	FPrimerInstanteCicloCerrado = false;
+	FBarridoIniciado = false;
+	FFaseMezclaPerfecta = false;
+	FInyeccionPil = false;
 
 	FHayEGR = ThereIsEGR;
 	if(FHayEGR)
@@ -3001,6 +3024,63 @@ void TCilindro::CalculoNIT() {
 
 // ------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+void TCilindro::TomaFlujosValvulas() {
+	const int nEsp = FMotor->getSpeciesNumber() - FIntEGR;
+	std::vector<double> Y(nEsp);
+	auto toma = [&](int n, TCondicionContorno **CC, std::vector<bool>& usa, std::vector<double>& M, std::vector<double>& H0,
+	std::vector<std::vector<double> >& MY) {
+		usa.assign(n, false);
+		M.assign(n, 0.);
+		H0.assign(n, 0.);
+		MY.assign(n, std::vector<double>(nEsp, 0.));
+		for(int i = 0; i < n; i++) {
+			TTubo *P = CC[i]->GetTuboExtremo(0).Pipe;
+			if(P == NULL || !P->ProvidesEndFlux())
+				continue;
+			const int end = (CC[i]->GetTuboExtremo(0).TipoExtremo == nmLeft) ? 0 : 1;
+			double m = 0., E = 0.;
+			P->TakeEndFlux(end, m, E, &Y[0]);
+			const double s = (end == 0) ? -1. : 1.;   // pipe +x flux at its left end leaves the cylinder
+			usa[i] = true;
+			M[i] = s * m;
+			H0[i] = (m != 0.) ? E / m : 0.;
+			for(int j = 0; j < nEsp; j++)
+				MY[i][j] = s * Y[j];
+		}
+	};
+	toma(FNumeroUnionesAdm, FCCValvulaAdm, FValvAdmFlujoCara, FValvAdmMasa, FValvAdmH0, FValvAdmMasaEspecie);
+	toma(FNumeroUnionesEsc, FCCValvulaEsc, FValvEscFlujoCara, FValvEscMasa, FValvEscH0, FValvEscMasaEspecie);
+	if(FCicloCerrado) {
+		// The valve pipes see a closed wall during the closed cycle, so nothing should arrive here. If something
+		// does (an open valve inside the closed-cycle window), keep it in the cylinder so mass is still conserved.
+		double resto = 0.;
+		for(int i = 0; i < FNumeroUnionesAdm; i++) {
+			resto += FValvAdmMasa[i];
+			FValvAdmMasa[i] = 0.;
+		}
+		for(int i = 0; i < FNumeroUnionesEsc; i++) {
+			resto += FValvEscMasa[i];
+			FValvEscMasa[i] = 0.;
+		}
+		if(resto != 0.) {
+			FMasa += resto;
+			if(FAvisosFlujoCicloCerrado++ < 5)
+				printf("WARNING: cylinder %d exchanged %g kg through a valve during its closed cycle (kept in the cylinder)\n",
+					   FNumeroCilindro, resto);
+		}
+	}
+}
+
+double TCilindro::EntalpiaEntradaH0(double h0, double MasEnt, double ASonCil, double MasCil) {
+	if(MasEnt == 0.)
+		return 0.;
+	const double h0d = h0 / (__cons::ARef * __cons::ARef);
+	return FGamma * MasEnt * (h0d / (ASonCil * ASonCil) - 1. / FGamma1) / MasCil;
+}
 
 void TCilindro::CalculaMomentoAngular() {
 	try {

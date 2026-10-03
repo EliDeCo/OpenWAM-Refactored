@@ -68,6 +68,7 @@ TCCDeposito::TCCDeposito(nmTypeBC TipoCC, int numCC, nmTipoCalculoEspecies Speci
 	FTuboExtremo = NULL;
 	FValvula = NULL;
 	FGasto = 0;
+	FCerrado = false;
 	FVelocity = 0;
 	FSonido = 1;
 	FVelocidadGarganta = 0;
@@ -528,6 +529,7 @@ void TCCDeposito::CalculaCondicionContorno(double Time) {
 			FCDEntrada = FValvula->getCDTubVol();
 			FSentidoFlujo = nmEntrante;
 			if(FCDEntrada > 0.0001) {  /* Abierto */
+				FCerrado = false;
 				if(FCDEntrada <= 1.0) {
 					FSeccionEficaz = FCDEntrada * FSeccionValvula;
 					FlujoEntranteDeposito();
@@ -558,6 +560,7 @@ void TCCDeposito::CalculaCondicionContorno(double Time) {
 #endif
 				}
 			} else { /* Cerrado */
+				FCerrado = true;
 				*FCD = *FCC;
 				FGasto = 0.;
 				FVelocity = 0.;
@@ -569,6 +572,7 @@ void TCCDeposito::CalculaCondicionContorno(double Time) {
 			FValvula->GetCDout(Time);
 			FCDSalida = FValvula->getCDVolTub();
 			if(FCDSalida > 0.0001) {  /* Abierto */
+				FCerrado = false;
 				// double TmpAa=FTuboExtremo[0].Entropia;  // nuevo para ver que pasa
 				FSeccionEficaz = FCDSalida * FSeccionValvula;
 				if(FDeposito->getTipoDeposito() == nmUnionDireccional) {
@@ -586,6 +590,7 @@ void TCCDeposito::CalculaCondicionContorno(double Time) {
 					FFraccionMasicaEspecie[FNumeroEspecies - 1] = FDeposito->GetFraccionMasicaEspecie(FNumeroEspecies - 1);
 				// }                                           // nuevo para ver que pasa
 			} else { /* Cerrado */
+				FCerrado = true;
 				*FCD = *FCC;
 				FGasto = 0.;
 				FVelocity = 0.;

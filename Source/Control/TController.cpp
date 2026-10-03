@@ -36,9 +36,16 @@
 //stGainInput::stGainInput(){}
 
 TController::TController(nmControlMethod meth, int i) {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FResMediosCtrl = stResMediosCtrl();
+	FResInstantCtrl = stResInstantCtrl();
 	FControl = meth;
 	FControllerID = i + 1;
 
+	// Zero every flag/accumulator: derived controllers only switch on the results they read, and an
+	// uninitialised flag randomly added extra result columns and accumulations.
+	FResMediosCtrl = stResMediosCtrl();
+	FResInstantCtrl = stResInstantCtrl();
 	FResMediosCtrl.Output = false;
 	FResMediosCtrl.Error = false;
 

@@ -42,6 +42,10 @@
 
 TDeposito::TDeposito(int i, nmTipoDeposito TipoDeposito, nmTipoCalculoEspecies SpeciesModel, int numeroespecies,
 					 nmCalculoGamma GammaCalculation, bool ThereIsEGR) {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FResInstantDep = stResInstantDep();
+	FResMediosDep = stResMediosDep();
+	FSensorDep = stSensoresDep();
 
 	FCalculoEspecies = SpeciesModel;
 	FNumeroEspecies = numeroespecies;
@@ -72,6 +76,8 @@ TDeposito::TDeposito(int i, nmTipoDeposito TipoDeposito, nmTipoCalculoEspecies S
 	FNumeroUniones = 0;
 	FHayCompresor = false;
 	FTime = 0.;
+	FMasa = 0.;   // variable-volume plenums only know their mass after IniciaVolumen
+	FCalculadoPaso = false;
 	FEstudioEstabilidadRealizado = false;
 
 	FCCDeposito = NULL;
@@ -421,6 +427,58 @@ double TDeposito::EntalpiaEntrada(double ASonidoE, double VelocidadE, double Mas
 		std::cout << "ERROR: TDeposito:EntalpiaEntrada en el deposito: " << FNumeroDeposito << std::endl;
 		std::cout << "Tipo de error: " << N.what() << std::endl;
 		throw Exception(N.what());
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+double TDeposito::EntalpiaEntradaH0(double h0, double MasaE, double ASonidoD, double MasaD, double Gamma) {
+	if(MasaE == 0.)
+		return 0.;
+	const double h0d = h0 / (__cons::ARef * __cons::ARef);
+	return Gamma * MasaE / MasaD * (h0d / (ASonidoD * ASonidoD) - 1. / __Gamma::G1(Gamma));
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+void TDeposito::TomaFlujosUniones() {
+	const int nEsp = FNumeroEspecies - FIntEGR;
+	std::vector<double> Y(nEsp);
+	double m = 0., E = 0.;
+	FUnionFlujoCara.assign(FNumeroUniones, false);
+	FUnionMasa.assign(FNumeroUniones, 0.);
+	FUnionH0.assign(FNumeroUniones, 0.);
+	FUnionMasaEspecie.assign(FNumeroUniones, std::vector<double>(nEsp, 0.));
+	for(int i = 0; i < FNumeroUniones; i++) {
+		if(FCCDeposito[i]->getTipoCC() != nmPipeToPlenumConnection || FCCDeposito[i]->getUnionDPF())
+			continue;
+		TTubo *P = FCCDeposito[i]->GetTuboExtremo(0).Pipe;
+		if(P == NULL || !P->ProvidesEndFlux())
+			continue;
+		const int end = (FCCDeposito[i]->GetTuboExtremo(0).TipoExtremo == nmLeft) ? 0 : 1;
+		P->TakeEndFlux(end, m, E, &Y[0]);
+		const double s = (end == 0) ? -1. : 1.;   // pipe +x flux at its left end leaves this element
+		FUnionFlujoCara[i] = true;
+		FUnionMasa[i] = s * m;
+		FUnionH0[i] = (m != 0.) ? E / m : 0.;
+		for(int j = 0; j < nEsp; j++)
+			FUnionMasaEspecie[i][j] = s * Y[j];
+	}
+	FCompFlujoCara = false;
+	FCompMasa = 0.;
+	FCompH0 = 0.;
+	if(FHayCompresor && FCompresor->getTuboSalida() != NULL && FCompresor->getTuboSalida()->ProvidesEndFlux()) {
+		const int end = FCompresor->getExtremoSalida();
+		FCompresor->getTuboSalida()->TakeEndFlux(end, m, E, &Y[0]);
+		const double s = (end == 0) ? -1. : 1.;   // what enters the outlet pipe left this plenum
+		FCompFlujoCara = true;
+		FCompMasa = s * m;
+		FCompH0 = (m != 0.) ? E / m : 0.;
+		FCompMasaEspecie.assign(nEsp, 0.);
+		for(int j = 0; j < nEsp; j++)
+			FCompMasaEspecie[j] = s * Y[j];
 	}
 }
 

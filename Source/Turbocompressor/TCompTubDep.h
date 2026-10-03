@@ -59,6 +59,7 @@ class TCompTubDep: public TCompresor {
 
 	double FAreaSalComp;
 	nmPipeEnd FExtremoSalida;
+	TTubo *FTuboSalida;		//!< pipe the compressor discharges into
 
 	double *FLanda;
 	double *FBeta;
@@ -119,6 +120,13 @@ class TCompTubDep: public TCompresor {
 //---------------------------------------------------------------------------
 
   public:
+
+	TTubo* getTuboSalida() {
+		return FTuboSalida;
+	}
+	int getExtremoSalida() {
+		return FExtremoSalida == nmLeft ? 0 : 1;
+	}
 
 	int getTubStator() {
 		return GetTubStator();

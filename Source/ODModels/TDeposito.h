@@ -82,6 +82,17 @@ class TDeposito {
 	int FNumeroCompresor;
 	int FCompresorSentido;
 
+	// Conservative coupling: what each pipe-to-plenum union (and a discharging compressor) moved this update,
+	// taken from the pipe's own boundary-face flux (TTubo::TakeEndFlux), signed positive INTO this element.
+	std::vector<bool> FUnionFlujoCara;		//!< union i uses the pipe face flux (else legacy BC flow)
+	std::vector<double> FUnionMasa;			//!< mass into the element through union i (kg)
+	std::vector<double> FUnionH0;			//!< stagnation enthalpy of that mass (J/kg)
+	std::vector<std::vector<double> > FUnionMasaEspecie;	//!< species masses into the element (kg)
+	bool FCompFlujoCara;					//!< the compressor term uses its outlet-pipe face flux
+	double FCompMasa;						//!< mass into the element through the compressor (kg)
+	double FCompH0;							//!< stagnation enthalpy of that mass (J/kg)
+	std::vector<double> FCompMasaEspecie;	//!< species masses into the element through the compressor (kg)
+
 	// Variables termodinamicas
 
 	double FTemperature;
@@ -147,6 +158,14 @@ class TDeposito {
 	// void PutNUniones(int value);
 
 	double EntalpiaEntrada(double ASonidoE, double VelocidadE, double MasaE, double ASonidoD, double MasaD, double Gamma);
+
+	/*! Same energy term as EntalpiaEntrada, from the stagnation enthalpy h0 (J/kg) of the exchanged mass MasaE
+	 (signed, + into the element); ASonidoD is the element's dimensionless speed of sound. Applied to both flow
+	 directions it conserves energy exactly with the pipe's face energy flux. */
+	double EntalpiaEntradaH0(double h0, double MasaE, double ASonidoD, double MasaD, double Gamma);
+
+	//! Fill the FUnion*/FComp* caches by draining the connected pipes' boundary-face accumulators (once per update).
+	void TomaFlujosUniones();
 
 	// void PutCalculadoPaso(bool valor);
 

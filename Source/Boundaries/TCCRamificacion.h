@@ -63,10 +63,8 @@ class TCCRamificacion: public TCondicionContorno {
 	double FGRho, FGMx, FGMy, FGE;   // ghost cell: rho, rho*u, rho*v, rho*et  (SI)
 	double *FGRhoY;              // ghost cell species (rho*Y)_k * (per volume)
 	double *FGNx, *FGNy;         // equally-spaced branch normals (junction -> pipe)
-	double FGVol;                // ghost cell volume (avg neighbour cell volume)
+	double FGVol;                // ghost cell volume: the half-cells the branches give up at their ghost ends
 	void CalculaCondicionContornoGJM(double DeltaT);
-	static void RoeM1DFlux(double rL, double uL, double pL, double gL, double rR, double uR, double pR, double gR,
-						   double& frho, double& frhoun, double& frhoet);
 
   public:
 
@@ -80,6 +78,8 @@ class TCCRamificacion: public TCondicionContorno {
 	void AsignaTubos(int NumberOfPipes, TTubo **Pipe);
 
 	void TuboCalculandose(int TuboActual);
+
+	double getGhostMass() const;
 
 };
 

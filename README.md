@@ -55,3 +55,5 @@ Kim, S., Kim, C., Rho, O.-H., & Kyu Hong, S. (2003). Cures for the shock instabi
 Hong, S. W., & Kim, C. (2011). A new finite volume method on junction coupling and boundary treatment for flow network system analyses. International Journal for Numerical Methods in Fluids, 65(6), 707–742. https://doi.org/10.1002/fld.2212
 
 Serrano, J. R., Arnau, F. J., Piqueras, P., & García-Afonso, O. (2013). Application of the two-step Lax and Wendroff FCT and the CE-SE method to flow transport in wall-flow monoliths. International Journal of Computer Mathematics, 91(1), 71–84. https://doi.org/10.1080/00207160.2013.783206
+
+Serrano, J. R., Arnau, F. J., Piqueras, P., Onorati, A., & Montenegro, G. (2008). 1D gas dynamic modelling of mass conservation in engine duct systems with thermal contact discontinuities. Mathematical and Computer Modelling, 49(5–6), 1078–1088. https://doi.org/10.1016/j.mcm.2008.03.015

@@ -59,6 +59,13 @@ TCondicionContorno::TCondicionContorno(nmTypeBC TipoCC, int numCC, nmTipoCalculo
 
 	FUnionDPF = false;
 
+	FTime0 = 0.;
+	FTime1 = 0.;
+	FDeltaT = 0.;
+	FDeltaAngulo = 0.;
+	FAnguloAnterior = 0.;
+	FAnguloActual = 0.;
+	FPosicionNodo = 0.;
 }
 
 //---------------------------------------------------------------------------

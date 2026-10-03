@@ -425,6 +425,7 @@ void TCompTubDep::BusquedaEntradaSalida(nmCompressorInlet EntradaCompresor, doub
 		double Cp = 0.;
 
 		FEntradaCompresor = EntradaCompresor;
+		FTuboSalida = BC[numeroCC - 1]->GetTuboExtremo(0).Pipe;
 		if(BC[numeroCC - 1]->GetTuboExtremo(0).TipoExtremo == nmLeft) {
 			FAreaSalComp = __geom::Circle_area(BC[numeroCC - 1]->GetTuboExtremo(0).Pipe->GetDiametro(0));
 			FExtremoSalida = nmLeft;

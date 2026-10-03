@@ -55,6 +55,7 @@
 #define TTuboH
 #include <cstdio>
 #include <iostream>
+#include <vector>
 #ifdef __BORLANDC__
 #include <vcl.h>
 #endif
@@ -228,6 +229,16 @@ class TTubo {
 	double **FRoeQ;					//!< RK3 working state  [FNumEcuaciones][FNin]
 	double **FRoeRes;				//!< RK3 residual R(Q)  [FNumEcuaciones][FNin]
 	double *FRoeF;					//!< Colebrook friction factor cached once/step (Re frozen across RK3 stages) [FNin]
+	//! Conservative pipe<->boundary coupling: the face fluxes the interior actually used at its two boundary faces
+	//! (end 0 = face 1/2, end 1 = face N-3/2), RK3-weighted, per duct, in the pipe +x direction.
+	double FStepFlux[2][3];			//!< this step's face flux: mass (kg/s), momentum (N), energy (W)
+	std::vector<double> FStepFluxY[2];	//!< this step's transported-species mass fluxes (kg/s)
+	double FEndAccMass[2];			//!< mass through the face since the last TakeEndFlux, x FNumeroConductos (kg)
+	double FEndAccEnergy[2];		//!< total energy through the face since the last TakeEndFlux, x FNumeroConductos (J)
+	double FEndAccMom[2];			//!< x-momentum impulse through the face since the last TakeEndFlux, x FNumeroConductos (N s)
+	std::vector<double> FEndAccY[2];	//!< transported-species mass through the face since the last TakeEndFlux (kg)
+	TCondicionContorno *FBCExtremo[2];	//!< boundary at the left (0) and right (1) end
+	bool FEndClosed[2];				//!< that boundary is a closed wall this step -> exact wall flux at the face
 	double FCcese;					//!< CE-SE constant
 
 	// Vectores del flux corrected transport
@@ -623,6 +634,27 @@ class TTubo {
 		return FNumeroConductos;
 	}
 	;
+	/*! True when the interior scheme publishes its boundary-face fluxes (RoeM). Elements coupled to such a pipe
+	 must take their mass/energy/species from TakeEndFlux so both sides of the face use one flux. */
+	bool ProvidesEndFlux() const {
+		return FMod.Modelo == nmTVD;
+	}
+	/*! Mass, total energy and species masses (all ducts) that crossed boundary face 'end' (0 = left, 1 = right) in
+	 the pipe +x direction since the previous call; the accumulators are then cleared. Y must hold
+	 FNumeroEspecies - FIntEGR values (same layout as the BC species arrays). */
+	void TakeEndFlux(int end, double& mass, double& energy, double* Y);
+	//! As above, also returning the x-momentum impulse (momentum flux incl. pressure, N s) through the face.
+	void TakeEndFlux(int end, double& mass, double& momentum, double& energy, double* Y);
+	//! Area of boundary face 'end' (one duct), the area the face fluxes are based on.
+	double GetAreaCara(int end) const {
+		return end == 0 ? FArea12[0] : FArea12[FNin - 2];
+	}
+	//! This step's face flux at 'end' (per duct, pipe +x): k = 0 mass, 1 momentum, 2 energy.
+	double PeekStepFlux(int end, int k) const {
+		return FStepFlux[end][k];
+	}
+	//! This step's species mass flux at 'end' (per duct, pipe +x), same species layout as TakeEndFlux.
+	double PeekStepFluxSpecies(int end, int j) const;
 	double getXRef() {
 		return FXref;
 	}

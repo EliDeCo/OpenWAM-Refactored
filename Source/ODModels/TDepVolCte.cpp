@@ -102,10 +102,21 @@ void TDepVolCte::ActualizaPropiedades(double TimeCalculo) {
 
 		int iterCount = 0;
 		const int MAX_ITER = 10000;
+		TomaFlujosUniones();
 		while(!Converge) {
 			H = 0.;
 			for(int i = 0; i < FNumeroUniones; i++) {
 				if(FCCDeposito[i]->getTipoCC() == nmPipeToPlenumConnection) {
+					if(FUnionFlujoCara[i]) {   // conservative: exactly what the pipe exchanged through its end face
+						m = FUnionMasa[i];
+						if(FirstStep) {
+							MasaEntrante += m;
+							for(int j = 0; j < FNumeroEspecies - FIntEGR; j++)
+								FMasaEspecie[j] += FUnionMasaEspecie[i][j];
+						}
+						H += EntalpiaEntradaH0(FUnionH0[i], m, Asonido1, FMasa, FCCDeposito[i]->getGamma());
+						continue;
+					}
 					if(dynamic_cast<TCCDeposito*>(FCCDeposito[i])->getSentidoFlujo() == nmEntrante) {
 						SignoFlujo = 1;
 					} else if(dynamic_cast<TCCDeposito*>(FCCDeposito[i])->getSentidoFlujo() == nmSaliente) {
@@ -164,7 +175,17 @@ void TDepVolCte::ActualizaPropiedades(double TimeCalculo) {
 				}
 			}
 
-			if(FHayCompresor) {
+			if(FHayCompresor && FCompFlujoCara) {   // mass/species from the compressor outlet pipe's face flux
+				m = FCompMasa;
+				if(FirstStep) {
+					MasaEntrante += m;
+					for(int j = 0; j < FNumeroEspecies - FIntEGR; j++)
+						FMasaEspecie[j] += FCompMasaEspecie[j];
+				}
+				// Backflow into the plenum brings its enthalpy; outflow leaves isentropically (the work goes to the pipe).
+				if(m > 0)
+					H += EntalpiaEntradaH0(FCompH0, m, Asonido1, FMasa, FCompresor->getGamma());
+			} else if(FHayCompresor) {
 				g = (double) FCompresorSentido * FCompresor->getMassflow();
 				m = g * DeltaT;
 				a = FCompresor->getSpeedSound();

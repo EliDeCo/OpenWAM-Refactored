@@ -36,6 +36,9 @@
 // ---------------------------------------------------------------------------
 
 TSensor::TSensor(int i) {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FResInstantSensor = stResInstantSensor();
+	FResMediosSensor = stResMediosSensor();
 	FNumeroSensor = i;
 	FInicia = false;
 	FPeriod = 0.;

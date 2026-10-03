@@ -39,6 +39,10 @@ TPIDController::TPIDController(int i) :
 	fTime_ant = 0;
 	fInicio = true;
 	fDwell = 0.5;
+	fTime_ant_filt = 0.;
+	fError = 0.;   // P/D terms and error are averaged into results before the first update (fDwell)
+	fpact = 0.;
+	fdact = 0.;   // output-filter time base; uninitialised it made the filtered output run-dependent
 }
 
 TPIDController::~TPIDController() {

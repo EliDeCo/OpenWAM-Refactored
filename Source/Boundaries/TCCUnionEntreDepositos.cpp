@@ -56,6 +56,9 @@
 TCCUnionEntreDepositos::TCCUnionEntreDepositos(nmTypeBC TipoCC, int numCC, nmTipoCalculoEspecies SpeciesModel,
 		int numeroespecies, nmCalculoGamma GammaCalculation, bool ThereIsEGR) :
 	TCondicionContorno(TipoCC, numCC, SpeciesModel, numeroespecies, GammaCalculation, ThereIsEGR) {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FResInstantUED = stResInstantUED();
+	FResMediosUED = stResMediosUED();
 	FValvula = NULL;
 	FGasto = 0.;
 	FGastoImpreso = 0.;

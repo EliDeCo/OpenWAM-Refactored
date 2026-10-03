@@ -58,6 +58,7 @@ class TCCDeposito: public TCondicionContorno {
 
 	double FSeccionEficaz;   // Seccion eficaz de la valvula
 	double FGasto; // Massflow en el extremo del tubo. Si es entrante, signo -. Si es saliente, signo +
+	bool FCerrado; //!< Last evaluation found the connection closed (Cd <= 1e-4); kept while the flow is stopped.
 	double FVelocity;         // Velocity en el extremo del tubo
 	double FSonido;            // Velocity del sonido en el extremo del tubo
 	double FVelocidadGarganta;  // Velocity en la garganta
@@ -100,6 +101,10 @@ class TCCDeposito: public TCondicionContorno {
 	void Resolucion(double ext1, double ext2, nmCaso Caso, double *u2t, double *a2t);
 
   public:
+
+	bool EndClosed() const {
+		return FCerrado;
+	}
 
 	int getNumeroDeposito() {
 		return FNumeroDeposito;

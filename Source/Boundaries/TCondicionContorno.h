@@ -169,6 +169,17 @@ class TCondicionContorno {
 	}
 	;
 
+	/*! True while this boundary is a closed wall for its pipe (closed valve/throttle, closed end). The pipe then
+	 uses an exact wall flux (zero mass and energy) at that face instead of the Riemann flux to the end node. */
+	virtual bool EndClosed() const {
+		return false;
+	}
+
+	//! Mass stored in the boundary itself (only the GJM ghost junction cell has any), for conservation audits.
+	virtual double getGhostMass() const {
+		return 0.;
+	}
+
 };
 
 #endif

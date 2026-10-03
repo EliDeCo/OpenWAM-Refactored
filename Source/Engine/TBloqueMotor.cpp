@@ -38,9 +38,24 @@
 
 TBloqueMotor::TBloqueMotor(double AmbientPressure, double AmbientTemperature, nmTipoCalculoEspecies SpeciesModel,
 						   int numeroespecies, nmCalculoGamma GammaCalculation, bool ThereIsEGR) {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FWoschni = stWoschni();
+	FGeom = stGeometria();
+	FParedCulata = stPropTermicas();
+	FParedPiston = stPropTermicas();
+	FParedCilindro = stPropTermicas();
+	FCoefRoadLoad = stRoadLoad();
+	FInjectionSys = stInjectionSys();
+	FTempInicial = stTemperaturasPared();
+	FResMediosMotor = stResMediosMotor();
+	FPerMec = stPerdMecanicas();
 	FMasaFuel = 0.;
 	FDosadoInicial = 0.;
 	FCiclo = 0;
+	FTime = 0.;                    // ModeloDeVehiculo takes DeltaT = Time - FTime on its first call
+	FPMPMMotor = 0.;               // friction MEP is only computed at the end of a cycle but used every step
+	FParPerdidasMecanicas = 0.;
+	FParMotor = 0.;
 	FPresionAmbiente = AmbientPressure;
 
 	FCalculoGamma = GammaCalculation;
@@ -54,6 +69,7 @@ TBloqueMotor::TBloqueMotor(double AmbientPressure, double AmbientTemperature, nm
 	FCilindro = NULL;
 
 	FPrimeravezAcumulaFuel = true;
+	FPrimeravezAcumulaMasaAtrapada = true;
 
 	FHayEGR = ThereIsEGR;
 	if(FHayEGR)

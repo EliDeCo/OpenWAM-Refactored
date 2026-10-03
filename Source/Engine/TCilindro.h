@@ -201,6 +201,15 @@ class TCilindro {
 	double FFuelInstant;
 	double FFuelInstantPil;
 	double FMasaBlowBy;
+	std::vector<bool> FValvAdmFlujoCara, FValvEscFlujoCara;	//!< valve uses its pipe face flux (else legacy BC flow)
+	std::vector<double> FValvAdmMasa, FValvEscMasa;			//!< mass into the cylinder this update (kg)
+	std::vector<double> FValvAdmH0, FValvEscH0;				//!< its stagnation enthalpy (J/kg)
+	std::vector<std::vector<double> > FValvAdmMasaEspecie, FValvEscMasaEspecie;	//!< species masses into the cylinder (kg)
+	int FAvisosFlujoCicloCerrado;							//!< closed-cycle valve exchanges reported so far
+	//! Drain the valve pipes' face-flux accumulators into the FValv* caches (call once per property update).
+	void TomaFlujosValvulas();
+	//! EntalpiaEntrada from the stagnation enthalpy h0 (J/kg) of the exchanged mass (signed, + into the cylinder).
+	double EntalpiaEntradaH0(double h0, double MasEnt, double ASonCil, double MasCil);
 	double FGastoBlowBy;
 
 	double FNIT;
@@ -417,6 +426,16 @@ class TCilindro {
 
 	double FMasaFuel;
 
+	//! Fuel injected and blow-by mass lost in the last property update (kg), for conservation audits.
+	bool getCicloCerrado() const {
+		return FCicloCerrado;
+	}
+	double getFuelInstant() const {
+		return FFuelInstant;
+	}
+	double getMasaBlowByPaso() const {
+		return FMasaBlowBy;
+	}
 	double getMasaFuel() {
 		return FMasaFuel;
 	}

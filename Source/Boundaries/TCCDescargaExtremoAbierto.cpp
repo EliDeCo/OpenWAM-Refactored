@@ -49,6 +49,11 @@ TCCDescargaExtremoAbierto::TCCDescargaExtremoAbierto(nmTypeBC TipoCC, int numCC,
 	FComposicion = NULL;
 	FTuboExtremo = NULL;
 	FVelocidadSonidoDep = 0;
+	// Only reservoir ends read the 'exhaust model' flag; an atmosphere end must take the atmospheric
+	// composition on inflow, so it defaults to false (it was left uninitialised).
+	FModeladoEscape = false;
+	FPref = 1.;
+	FPerdidaExtremo = 1.;
 
 }
 

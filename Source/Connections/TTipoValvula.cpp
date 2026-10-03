@@ -53,6 +53,16 @@ TTipoValvula::TTipoValvula(nmTipoValvula TipVal) {
 	FToCylinder = false;
 	FEngine = NULL;
 	FTime0 = 0.;
+	// Derived classes overwrite these as they read their data; PutPipe scales the Cds by FSectionRatio,
+	// so they must hold a defined value before that.
+	FCDTubVol = 0.;
+	FCDVolTub = 0.;
+	FCTorb = 0.;
+	FDiamRef = 0.;
+	FDiamTubo = 0.;
+	FSectionRatio = 1.;
+	FCDEMedio = 0.;
+	FCDSMedio = 0.;
 }
 
 //---------------------------------------------------------------------------

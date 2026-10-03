@@ -7,6 +7,9 @@
 // ---------------------------------------------------------------------------
 
 TEffCorrector::TEffCorrector() {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FC = stTurbomachinery();
+	FT = stTurbomachinery();
 
 	FNumberNodes = 8;
 

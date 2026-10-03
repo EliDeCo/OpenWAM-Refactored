@@ -67,6 +67,7 @@ TCCCilindro::TCCCilindro(nmTypeBC TipoCC, int numCC, nmTipoCalculoEspecies Speci
 	FValvula = NULL;
 
 	FGasto = 0.;
+	FCerrado = false;
 	FVelocity = 0.;
 	FSonido = 1.;
 	FMomento = 0.;
@@ -209,6 +210,13 @@ void TCCCilindro::AsignaCilindro(TBloqueMotor *EngineBlock) {
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
+bool TCCCilindro::EndClosed() const {
+	return FCerrado || (FCilindro != NULL && FCilindro->getCicloCerrado());
+}
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
 void TCCCilindro::CalculaCondicionContorno(double Time) {
 	try {
 		double rel_CCon_Entropia, coef, FraccionMasicaAcum = 0.;
@@ -234,6 +242,7 @@ void TCCCilindro::CalculaCondicionContorno(double Time) {
 			FValvula->GetCDin(FTime1);
 			FCDEntrada = FValvula->getCDTubVol();
 			if(FCDEntrada > 0.0001) {  /* Abierto */
+				FCerrado = false;
 				FSeccionEficaz = FCDEntrada * FSeccionValvula;
 				FlujoEntranteCilindro();
 				/* CALCULO DEL MOMENTO ANGULAR ENTRANTE L */
@@ -257,6 +266,7 @@ void TCCCilindro::CalculaCondicionContorno(double Time) {
 				if(FHayEGR)
 					FFraccionMasicaEspecie[FNumeroEspecies - 1] = FTuboExtremo[0].Pipe->GetFraccionMasicaCC(FIndiceCC, FNumeroEspecies - 1);
 			} else { /* Cerrado */
+				FCerrado = true;
 				FMomento = 0.;
 				FGasto = 0.;
 				*FCD = *FCC;
@@ -274,7 +284,13 @@ void TCCCilindro::CalculaCondicionContorno(double Time) {
 			FValvula->GetCDout(FTime1);
 			FCDSalida = FValvula->getCDVolTub();
 			if(FCDSalida > 0.0001) {  /* Abierto */
+				FCerrado = false;
 				FSeccionEficaz = FCDSalida * FSeccionValvula;
+				// FlujoSalienteCilindro clamps Fk = A_pipe/A_eff to >= 1, so the pipe-end state can never carry
+				// more than the pipe area passes. Clamp the effective area the same way so the mass flow taken
+				// from the cylinder matches what the pipe receives (otherwise mass is destroyed at the valve).
+				if(FSeccionEficaz > FSeccionTubo)
+					FSeccionEficaz = FSeccionTubo;
 				FlujoSalienteCilindro();
 				/* CALCULO DEL MOMENTO ANGULAR SALIENTE */
 				if(FGasto > 1e-5) {
@@ -290,6 +306,7 @@ void TCCCilindro::CalculaCondicionContorno(double Time) {
 				if(FHayEGR)
 					FFraccionMasicaEspecie[FNumeroEspecies - 1] = FCilindro->GetComposicionSaliente(FNumeroEspecies - 1);
 			} else { /* Cerrado */
+				FCerrado = true;
 				FMomento = 0.;
 				FGasto = 0.;
 				*FCD = *FCC;
@@ -439,7 +456,7 @@ void TCCCilindro::FlujoSalienteCilindro() {
 			// Calcula del massflow. Como es saliente del cilindro, siempre es positivo.
 			xx = pow(sqrtGa2, (FGamma2 / FGamma1));
 			yy = pow(FAd, FGamma4);
-			FGasto = __units::BarToPa(FCDSalida * FSeccionValvula * FGamma * xx * yy) / (FCilindro->getSpeedsound());
+			FGasto = __units::BarToPa(FSeccionEficaz * FGamma * xx * yy) / (FCilindro->getSpeedsound());
 
 			/* Reduccion a flujo subsonico mediante onda de choque plana en el caso
 			 de que se hayan obtenido condiciones supersonicas en el extremo del
@@ -485,7 +502,7 @@ void TCCCilindro::FlujoSalienteCilindro() {
 			xx = *FCC + Ga3U;
 			a1 = FCilindro->getSpeedsound() / __cons::ARef * xx / (FTuboExtremo[0].Entropia * FAd);
 			FVelocidadGarganta = Fk * pow2(a1) * FVelocity / pow2(FSonido);
-			FGasto = __units::BarToPa(FCDSalida * FSeccionValvula * FGamma * pow(FAd / (FCilindro->getSpeedsound() / __cons::ARef),
+			FGasto = __units::BarToPa(FSeccionEficaz * FGamma * pow(FAd / (FCilindro->getSpeedsound() / __cons::ARef),
 									  FGamma4) * FVelocidadGarganta * pow(a1, 2. / FGamma1)) / __cons::ARef;
 
 			FTuboExtremo[0].Entropia = FTuboExtremo[0].Entropia * FSonido / xx;

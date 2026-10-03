@@ -40,6 +40,9 @@
 TVenturi::TVenturi(int i, nmTipoCalculoEspecies SpeciesModel, int numeroespecies, nmCalculoGamma GammaCalculation,
 				   bool ThereIsEGR) :
 	TDepVolCteBase(i, nmVenturi, SpeciesModel, numeroespecies, GammaCalculation, ThereIsEGR) {
+	// Value-initialise every struct member first: several flags/accumulators were never set.
+	FResInstantVenturi = stResInstantVenturi();
+	FResMediosVenturi = stResMediosVenturi();
 
 	asgNumeroVenturi = false;
 
@@ -153,9 +156,20 @@ void TVenturi::ActualizaPropiedades(double TimeCalculo) {
 		double Error = 0.;
 		double Diff = 0.;
 
+		TomaFlujosUniones();
 		while(!Converge) {
 			H = 0.;
 			for(int i = 0; i < FNumeroUniones; i++) {
+				if(FUnionFlujoCara[i]) {   // conservative: exactly what the pipe exchanged through its end face
+					m = FUnionMasa[i];
+					if(FirstStep) {
+						MasaEntrante += m;
+						for(int j = 0; j < FNumeroEspecies - FIntEGR; j++)
+							FMasaEspecie[j] += FUnionMasaEspecie[i][j];
+					}
+					H += EntalpiaEntradaH0(FUnionH0[i], m, Asonido1, FMasa, FCCDeposito[i]->getGamma());
+					continue;
+				}
 				if(dynamic_cast<TCCDeposito*>(FCCDeposito[i])->getSentidoFlujo() == nmEntrante) {
 					SignoFlujo = 1;
 				} else if(dynamic_cast<TCCDeposito*>(FCCDeposito[i])->getSentidoFlujo() == nmSaliente) {
